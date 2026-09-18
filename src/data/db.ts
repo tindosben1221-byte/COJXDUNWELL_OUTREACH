@@ -9,11 +9,10 @@ const LOCAL_STORAGE_BACKUP_KEY = 'dunwell_coj_outreach_live_records_v1';
 
 export const ALL_SCREENING_TOOLS: { id: ScreeningToolId; name: string; stepNumber: number }[] = [
   { id: 'personal', name: '1. Personal Details & Demographics', stepNumber: 1 },
-  { id: 'vitals', name: '2. Vitals Signs (Record Measurements)', stepNumber: 2 },
-  { id: 'hts', name: '3. HTS / HIV Screening', stepNumber: 3 },
-  { id: 'substance', name: '4. Substance & Rehab Screening', stepNumber: 4 },
-  { id: 'psychosocial', name: '5. Psychosocial / Mental Health (Tick Form)', stepNumber: 5 },
-  { id: 'actionPlan', name: '6. Clinical Action Plan & Referrals', stepNumber: 6 },
+  { id: 'vitals', name: '2. Vitals Signs and HTS Screening', stepNumber: 2 },
+  { id: 'substance', name: '3. Substance & Rehab Screening', stepNumber: 3 },
+  { id: 'psychosocial', name: '4. Psychosocial / Mental Health (Tick Form)', stepNumber: 4 },
+  { id: 'actionPlan', name: '5. Shelter, Social Support & Reintegration Plan', stepNumber: 5 },
 ];
 
 // Helper to filter out any legacy dummy records that might have been saved in browser storage
@@ -66,10 +65,30 @@ function openIndexedDB(): Promise<IDBDatabase> {
 function normalizeRecord(rec: ScreeningRecord): ScreeningRecord {
   const tools: ScreeningToolId[] = rec.completedTools && Array.isArray(rec.completedTools)
     ? [...rec.completedTools]
-    : ['personal', 'vitals', 'hts', 'psychosocial', 'actionPlan'];
+    : ['personal', 'vitals', 'substance', 'psychosocial', 'actionPlan'];
 
   return {
     ...rec,
+    actionPlan: Object.assign(
+      {
+        shelterPreferenceNotes: '',
+        childrenCount: 0,
+        childrenAges: '',
+        counselingFocusAreas: [],
+        counselingDetails: '',
+        shelterFrequency: 'Never',
+        shelterReasonForLeaving: '',
+        skillsInterestAreas: [],
+        immediateIntervention: ['Routine Outreach Assessment'],
+        triageLevel: 'Routine / Stable',
+        wantsCojShelter: 'No',
+        hasChildrenOnStreets: 'No',
+        needsClinicalPsychosocialCounseling: 'No',
+        stayedAtCojShelterBefore: 'No',
+        interestedInSkillsDevelopment: 'No',
+      },
+      rec.actionPlan || {}
+    ) as ClinicalActionPlan,
     completedTools: tools,
     isFullyCompleted: tools.length >= 5,
   };
@@ -278,6 +297,19 @@ export function createBlankRecord(personal: PersonalDetails, meta: { outreachSit
       safetyPlanInitiated: false,
     },
     actionPlan: {
+      wantsCojShelter: 'No',
+      shelterPreferenceNotes: '',
+      hasChildrenOnStreets: 'No',
+      childrenCount: 0,
+      childrenAges: '',
+      needsClinicalPsychosocialCounseling: 'No',
+      counselingFocusAreas: [],
+      counselingDetails: '',
+      stayedAtCojShelterBefore: 'No',
+      shelterFrequency: 'Never',
+      shelterReasonForLeaving: '',
+      interestedInSkillsDevelopment: 'No',
+      skillsInterestAreas: [],
       immediateIntervention: ['Routine Outreach Assessment'],
       triageLevel: 'Routine / Stable',
     },
@@ -341,6 +373,9 @@ export async function saveToolForPerson(
   const existing = memoryRecordsCache[index];
   const toolsSet = new Set<ScreeningToolId>(existing.completedTools || []);
   toolsSet.add(toolId);
+  if (toolId === 'vitals') {
+    toolsSet.add('hts');
+  }
 
   const updatedRecord: ScreeningRecord = {
     ...existing,
@@ -351,7 +386,7 @@ export async function saveToolForPerson(
     ...(toolData.psychosocial ? { psychosocial: toolData.psychosocial } : {}),
     ...(toolData.actionPlan ? { actionPlan: toolData.actionPlan } : {}),
     completedTools: Array.from(toolsSet),
-    isFullyCompleted: toolsSet.size >= 6,
+    isFullyCompleted: toolsSet.size >= 5,
   };
 
   const newRecords = [...memoryRecordsCache];

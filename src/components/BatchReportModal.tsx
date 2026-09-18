@@ -1,5 +1,5 @@
 import React, { useRef, useState, useMemo } from 'react';
-import { ScreeningRecord } from '../types';
+import { ScreeningRecord, PsychosocialSymptoms } from '../types';
 import { CojLogo, DnwellLogo } from './Logos';
 import {
   Printer,
@@ -16,6 +16,11 @@ import {
   MapPin,
   Activity,
   Calendar,
+  Home,
+  Baby,
+  GraduationCap,
+  Brain,
+  LifeBuoy,
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -73,6 +78,235 @@ export const BatchReportModal: React.FC<BatchReportModalProps> = ({
   const acutePct = total ? Math.round((acuteCount / total) * 100) : 0;
   const highBpCount = records.filter((r) => r.medical.vitals.bloodPressureSys >= 140).length;
   const tbSymptomCount = records.filter((r) => r.medical.tbScreeningSymptomatic).length;
+
+  // COJ Homeless Shelter Metrics
+  const shelterMetrics = useMemo(() => {
+    let wantsYes = 0;
+    let wantsUndecided = 0;
+    let wantsNo = 0;
+    let stayedYes = 0;
+    let stayedNo = 0;
+    const freqMap: Record<string, number> = {
+      'Once': 0,
+      '2-3 Times': 0,
+      'Frequently / Multiple Times': 0,
+      'Never': 0,
+    };
+    const reasonsMap: Record<string, number> = {};
+
+    records.forEach((r) => {
+      const w = r.actionPlan?.wantsCojShelter;
+      if (w === 'Yes') wantsYes++;
+      else if (w === 'Undecided') wantsUndecided++;
+      else wantsNo++;
+
+      const s = r.actionPlan?.stayedAtCojShelterBefore;
+      if (s === 'Yes') {
+        stayedYes++;
+        const f = r.actionPlan?.shelterFrequency || 'Once';
+        freqMap[f] = (freqMap[f] || 0) + 1;
+        const re = r.actionPlan?.shelterReasonForLeaving || 'Not Specified';
+        reasonsMap[re] = (reasonsMap[re] || 0) + 1;
+      } else {
+        stayedNo++;
+      }
+    });
+
+    const reasonsList = Object.entries(reasonsMap)
+      .map(([reason, count]) => ({
+        reason,
+        count,
+        pct: stayedYes ? Math.round((count / stayedYes) * 100) : 0,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      wantsYes,
+      wantsYesPct: total ? Math.round((wantsYes / total) * 100) : 0,
+      wantsUndecided,
+      wantsNo,
+      stayedYes,
+      stayedYesPct: total ? Math.round((stayedYes / total) * 100) : 0,
+      stayedNo,
+      freqMap,
+      reasonsList,
+    };
+  }, [records, total]);
+
+  // Street Children & Family Protection Metrics
+  const childrenMetrics = useMemo(() => {
+    let totalChildren = 0;
+    const cases: Array<{
+      ref: string;
+      name: string;
+      site: string;
+      count: number;
+      ages: string;
+      wantsShelter: string;
+    }> = [];
+
+    records.forEach((r) => {
+      if (r.actionPlan?.hasChildrenOnStreets === 'Yes') {
+        const c = r.actionPlan.childrenCount || 1;
+        totalChildren += c;
+        cases.push({
+          ref: r.refNumber,
+          name: r.personal.fullName,
+          site: r.outreachSite,
+          count: c,
+          ages: r.actionPlan.childrenAges || 'Unspecified',
+          wantsShelter: r.actionPlan.wantsCojShelter || 'Unset',
+        });
+      }
+    });
+
+    return {
+      totalChildren,
+      familyCount: cases.length,
+      familyPct: total ? Math.round((cases.length / total) * 100) : 0,
+      cases,
+    };
+  }, [records, total]);
+
+  // Clinical & Psychosocial Counseling Metrics
+  const counselingMetrics = useMemo(() => {
+    let needsYes = 0;
+    let needsUndecided = 0;
+    let needsNo = 0;
+    const focusMap: Record<string, number> = {};
+
+    records.forEach((r) => {
+      const c = r.actionPlan?.needsClinicalPsychosocialCounseling;
+      if (c === 'Yes') needsYes++;
+      else if (c === 'Undecided') needsUndecided++;
+      else needsNo++;
+
+      if (r.actionPlan?.counselingFocusAreas) {
+        r.actionPlan.counselingFocusAreas.forEach((area) => {
+          focusMap[area] = (focusMap[area] || 0) + 1;
+        });
+      }
+    });
+
+    const focusList = Object.entries(focusMap)
+      .map(([area, count]) => ({
+        area,
+        count,
+        pct: total ? Math.round((count / total) * 100) : 0,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      needsYes,
+      needsYesPct: total ? Math.round((needsYes / total) * 100) : 0,
+      needsUndecided,
+      needsNo,
+      focusList,
+    };
+  }, [records, total]);
+
+  // Skills Development & Vocational Training Metrics
+  const skillsMetrics = useMemo(() => {
+    let interestedYes = 0;
+    let interestedUndecided = 0;
+    let interestedNo = 0;
+    const skillsMap: Record<string, number> = {};
+
+    records.forEach((r) => {
+      const s = r.actionPlan?.interestedInSkillsDevelopment;
+      if (s === 'Yes') interestedYes++;
+      else if (s === 'Undecided') interestedUndecided++;
+      else interestedNo++;
+
+      if (r.actionPlan?.skillsInterestAreas) {
+        r.actionPlan.skillsInterestAreas.forEach((skill) => {
+          skillsMap[skill] = (skillsMap[skill] || 0) + 1;
+        });
+      }
+    });
+
+    const skillsRanked = Object.entries(skillsMap)
+      .map(([skill, count]) => ({
+        skill,
+        count,
+        pct: total ? Math.round((count / total) * 100) : 0,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      interestedYes,
+      interestPct: total ? Math.round((interestedYes / total) * 100) : 0,
+      interestedUndecided,
+      interestedNo,
+      skillsRanked,
+    };
+  }, [records, total]);
+
+  // Psychosocial Tick Form Deep Metrics
+  const psychosocialMetrics = useMemo(() => {
+    let evaluated = 0;
+    let crisis = 0;
+    let high = 0;
+    let moderate = 0;
+    let mild = 0;
+    let suicideAlerts = 0;
+
+    const symptomLabels: Record<keyof PsychosocialSymptoms, string> = {
+      depressedMood: 'Severe Depression / Sadness',
+      anxiety: 'Excessive Anxiety / Nervous',
+      sleepDisturbance: 'Sleep Disturbance / Insomnia',
+      appetiteLoss: 'Severe Appetite Loss',
+      traumaFlashbacks: 'Trauma Flashbacks & Nightmares',
+      anhedonia: 'Loss of Interest / Survival Drive',
+      hallucinationsOrParanoia: 'Hallucinations or Paranoia',
+      panicSymptoms: 'Panic Attacks & Shaking',
+      suicidalIdeation: 'Suicidal Thoughts & Ideation',
+      extremeIsolation: 'Social Isolation / Abandonment',
+      cognitiveConfusion: 'Cognitive Confusion / Disorientation',
+      recentGbvOrAssault: 'Victim of Assault or GBV',
+    };
+
+    const symptomCounts: Record<string, number> = {};
+
+    records.forEach((r) => {
+      if (r.psychosocial) {
+        evaluated++;
+        const lvl = r.psychosocial.analysis.distressLevel;
+        if (lvl === 'Severe Crisis') crisis++;
+        else if (lvl === 'High') high++;
+        else if (lvl === 'Moderate') moderate++;
+        else mild++;
+
+        if (r.psychosocial.analysis.crisisAlert || r.psychosocial.symptoms.suicidalIdeation) {
+          suicideAlerts++;
+        }
+
+        (Object.keys(symptomLabels) as Array<keyof PsychosocialSymptoms>).forEach((key) => {
+          if (r.psychosocial?.symptoms[key]) {
+            symptomCounts[key] = (symptomCounts[key] || 0) + 1;
+          }
+        });
+      }
+    });
+
+    const symptomsList = Object.entries(symptomLabels)
+      .map(([key, label]) => ({
+        label,
+        count: symptomCounts[key] || 0,
+        pct: evaluated ? Math.round(((symptomCounts[key] || 0) / evaluated) * 100) : 0,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      evaluated,
+      crisis,
+      high,
+      moderate,
+      mild,
+      suicideAlerts,
+      symptomsList,
+    };
+  }, [records]);
 
   // Breakdown 1: Hotspot Sites
   const siteBreakdown = useMemo(() => {
@@ -421,6 +655,53 @@ export const BatchReportModal: React.FC<BatchReportModalProps> = ({
                   <span className="text-[9px] text-emerald-800 font-bold block">{rehabPct}% of users</span>
                 </div>
               </div>
+
+              {/* Second Row: Shelter, Children, Counseling & Skills KPIs */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center mt-3 pt-3 border-t border-slate-200">
+                <div className="bg-amber-50/70 p-2.5 rounded-lg border border-amber-200 shadow-xs">
+                  <span className="text-[10px] font-bold text-amber-900 block uppercase flex items-center justify-center gap-1">
+                    <Home className="w-3 h-3 text-amber-700" />
+                    Wants COJ Shelter
+                  </span>
+                  <span className="text-2xl font-black text-amber-900 font-mono">{shelterMetrics.wantsYes}</span>
+                  <span className="text-[9px] text-amber-800 font-bold block">
+                    {shelterMetrics.wantsYesPct}% ({shelterMetrics.stayedYes} past stays)
+                  </span>
+                </div>
+
+                <div className="bg-rose-50/70 p-2.5 rounded-lg border border-rose-200 shadow-xs">
+                  <span className="text-[10px] font-bold text-rose-900 block uppercase flex items-center justify-center gap-1">
+                    <Baby className="w-3 h-3 text-rose-700" />
+                    Children on Street
+                  </span>
+                  <span className="text-2xl font-black text-rose-700 font-mono">{childrenMetrics.totalChildren}</span>
+                  <span className="text-[9px] text-rose-800 font-bold block">
+                    {childrenMetrics.familyCount} Families Safeguarded
+                  </span>
+                </div>
+
+                <div className="bg-sky-50/70 p-2.5 rounded-lg border border-sky-200 shadow-xs">
+                  <span className="text-[10px] font-bold text-sky-900 block uppercase flex items-center justify-center gap-1">
+                    <Brain className="w-3 h-3 text-sky-700" />
+                    Needs Counseling
+                  </span>
+                  <span className="text-2xl font-black text-sky-800 font-mono">{counselingMetrics.needsYes}</span>
+                  <span className="text-[9px] text-sky-800 font-bold block">
+                    {counselingMetrics.needsYesPct}% of total cohort
+                  </span>
+                </div>
+
+                <div className="bg-purple-50/70 p-2.5 rounded-lg border border-purple-200 shadow-xs">
+                  <span className="text-[10px] font-bold text-purple-900 block uppercase flex items-center justify-center gap-1">
+                    <GraduationCap className="w-3 h-3 text-purple-700" />
+                    Skills Development
+                  </span>
+                  <span className="text-2xl font-black text-purple-800 font-mono">{skillsMetrics.interestedYes}</span>
+                  <span className="text-[9px] text-purple-800 font-bold block">
+                    {skillsMetrics.interestPct}% interested in training
+                  </span>
+                </div>
+              </div>
             </div>
 
             {/* Table 1: Hotspot Site Distribution Table */}
@@ -713,12 +994,392 @@ export const BatchReportModal: React.FC<BatchReportModalProps> = ({
               </div>
             </div>
 
-            {/* Table 7: Master Screening Roll & Ledger of All Screened Persons */}
+            {/* Visual Analytics & Statistical Distribution Graphs */}
+            <div className="border border-slate-300 rounded-xl p-4 bg-slate-50/60 space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                <h3 className="text-xs font-black uppercase text-blue-950 flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5 text-blue-900" />
+                  Visual Analytics & Statistical Distributions (All Screened N={total})
+                </h3>
+                <span className="text-[10px] text-slate-500 font-mono">Cohort Staging</span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[10px]">
+                {/* Graph A: Shelter Placement & Past History */}
+                <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs flex flex-col justify-between">
+                  <div>
+                    <span className="font-extrabold text-blue-950 block uppercase text-[10px] mb-2 flex items-center gap-1">
+                      <Home className="w-3 h-3 text-amber-600" />
+                      COJ Shelter Demand & Stays
+                    </span>
+                    <div className="space-y-2">
+                      <div>
+                        <div className="flex justify-between text-[9px] mb-0.5">
+                          <span className="font-semibold text-slate-700">Wants COJ Shelter</span>
+                          <span className="font-mono font-bold text-amber-700">{shelterMetrics.wantsYes} ({shelterMetrics.wantsYesPct}%)</span>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                          <div className="bg-amber-500 h-2 rounded-full" style={{ width: `${shelterMetrics.wantsYesPct}%` }} />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-[9px] mb-0.5">
+                          <span className="font-semibold text-slate-700">Stayed in Shelter Before</span>
+                          <span className="font-mono font-bold text-blue-700">{shelterMetrics.stayedYes} ({shelterMetrics.stayedYesPct}%)</span>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                          <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${shelterMetrics.stayedYesPct}%` }} />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-[9px] mb-0.5">
+                          <span className="font-semibold text-slate-700">Children on Street (Families)</span>
+                          <span className="font-mono font-bold text-rose-700">{childrenMetrics.totalChildren} in {childrenMetrics.familyCount} Families</span>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                          <div className="bg-rose-500 h-2 rounded-full" style={{ width: `${childrenMetrics.familyPct}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-[8px] text-slate-400 mt-2.5 pt-1.5 border-t border-slate-100 flex justify-between">
+                    <span>COJ Shelter Placement Target</span>
+                    <span>High Priority</span>
+                  </div>
+                </div>
+
+                {/* Graph B: Skills Development Preferences */}
+                <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs flex flex-col justify-between">
+                  <div>
+                    <span className="font-extrabold text-blue-950 block uppercase text-[10px] mb-2 flex items-center gap-1">
+                      <GraduationCap className="w-3 h-3 text-purple-600" />
+                      Top Vocational Trades
+                    </span>
+                    <div className="space-y-1.5">
+                      {skillsMetrics.skillsRanked.slice(0, 4).map((s) => (
+                        <div key={s.skill}>
+                          <div className="flex justify-between text-[9px] mb-0.5">
+                            <span className="font-semibold text-slate-700 truncate max-w-[130px]">{s.skill}</span>
+                            <span className="font-mono font-bold text-purple-800">{s.count} ({s.pct}%)</span>
+                          </div>
+                          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                            <div className="bg-purple-600 h-1.5 rounded-full" style={{ width: `${s.pct}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                      {skillsMetrics.skillsRanked.length === 0 && (
+                        <span className="text-[9px] text-slate-400 italic">No skills registered yet</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-[8px] text-slate-400 mt-2.5 pt-1.5 border-t border-slate-100 flex justify-between">
+                    <span>Overall Interest: {skillsMetrics.interestPct}%</span>
+                    <span>Economic Upliftment</span>
+                  </div>
+                </div>
+
+                {/* Graph C: Psychosocial Symptoms & Distress */}
+                <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs flex flex-col justify-between">
+                  <div>
+                    <span className="font-extrabold text-blue-950 block uppercase text-[10px] mb-2 flex items-center gap-1">
+                      <Brain className="w-3 h-3 text-sky-600" />
+                      Top Mental Health Symptoms
+                    </span>
+                    <div className="space-y-1.5">
+                      {psychosocialMetrics.symptomsList.slice(0, 4).map((sym) => (
+                        <div key={sym.label}>
+                          <div className="flex justify-between text-[9px] mb-0.5">
+                            <span className="font-semibold text-slate-700 truncate max-w-[130px]">{sym.label}</span>
+                            <span className="font-mono font-bold text-sky-800">{sym.count} ({sym.pct}%)</span>
+                          </div>
+                          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                            <div className="bg-sky-600 h-1.5 rounded-full" style={{ width: `${sym.pct}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="text-[8px] text-slate-400 mt-2.5 pt-1.5 border-t border-slate-100 flex justify-between">
+                    <span>Crisis: {psychosocialMetrics.crisis} | Receptive: {counselingMetrics.needsYesPct}%</span>
+                    <span>Psychosocial Lead</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Table 7: COJ Homeless Shelter Placement Demand & Prior Stays */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-black uppercase text-blue-950 flex items-center gap-1.5">
+                  <Home className="w-3.5 h-3.5 text-amber-700" />
+                  Table 7: COJ Homeless Shelter Placement Demand & Prior Stay Surveillance (N={total})
+                </h3>
+                <span className="text-[10px] text-slate-500 font-mono">
+                  City Social Development Integration
+                </span>
+              </div>
+              <table className="w-full text-left text-[11px] border-collapse border border-slate-300">
+                <thead className="bg-slate-800 text-white text-[10px] uppercase font-bold">
+                  <tr>
+                    <th className="p-2 border border-slate-300">Shelter Indicator / Question</th>
+                    <th className="p-2 border border-slate-300 text-center">Positive (Yes)</th>
+                    <th className="p-2 border border-slate-300 text-center">Undecided / Maybe</th>
+                    <th className="p-2 border border-slate-300 text-center">Declined (No)</th>
+                    <th className="p-2 border border-slate-300">Key Context / Frequency / Reasons</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  <tr>
+                    <td className="p-2 border border-slate-300 font-bold text-slate-900">
+                      Do they want to stay at COJ Homeless Shelter?
+                    </td>
+                    <td className="p-2 border border-slate-300 text-center font-mono font-bold text-emerald-700">
+                      {shelterMetrics.wantsYes} ({shelterMetrics.wantsYesPct}%)
+                    </td>
+                    <td className="p-2 border border-slate-300 text-center font-mono font-bold text-amber-700">
+                      {shelterMetrics.wantsUndecided} ({total ? Math.round((shelterMetrics.wantsUndecided / total) * 100) : 0}%)
+                    </td>
+                    <td className="p-2 border border-slate-300 text-center font-mono text-slate-600">
+                      {shelterMetrics.wantsNo} ({total ? Math.round((shelterMetrics.wantsNo / total) * 100) : 0}%)
+                    </td>
+                    <td className="p-2 border border-slate-300 text-[10px] text-slate-700">
+                      Immediate bed booking & social worker referral prioritized for Yes & Undecided respondents.
+                    </td>
+                  </tr>
+                  <tr className="bg-slate-50">
+                    <td className="p-2 border border-slate-300 font-bold text-slate-900">
+                      Have they stayed at COJ shelter before?
+                    </td>
+                    <td className="p-2 border border-slate-300 text-center font-mono font-bold text-blue-900">
+                      {shelterMetrics.stayedYes} ({shelterMetrics.stayedYesPct}%)
+                    </td>
+                    <td className="p-2 border border-slate-300 text-center font-mono text-slate-400">—</td>
+                    <td className="p-2 border border-slate-300 text-center font-mono text-slate-600">
+                      {shelterMetrics.stayedNo} ({total ? Math.round((shelterMetrics.stayedNo / total) * 100) : 0}%)
+                    </td>
+                    <td className="p-2 border border-slate-300 text-[10px] text-slate-700">
+                      <span className="font-bold">Prior Stay Frequency:</span> Once: {shelterMetrics.freqMap['Once'] || 0} | 2-3 Times: {shelterMetrics.freqMap['2-3 Times'] || 0} | Frequent: {shelterMetrics.freqMap['Frequently / Multiple Times'] || 0}
+                    </td>
+                  </tr>
+                  {shelterMetrics.reasonsList.length > 0 && (
+                    <tr>
+                      <td className="p-2 border border-slate-300 font-bold text-slate-900">
+                        Primary Reasons for Leaving Past Shelters
+                      </td>
+                      <td colSpan={4} className="p-2 border border-slate-300 text-[10px]">
+                        <div className="flex flex-wrap gap-2">
+                          {shelterMetrics.reasonsList.map((r) => (
+                            <span key={r.reason} className="bg-slate-100 px-2 py-0.5 rounded border border-slate-300 font-medium">
+                              <strong>{r.reason}</strong>: {r.count} ({r.pct}%)
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Table 8: Minor Safeguarding & Street Children Surveillance */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-black uppercase text-blue-950 flex items-center gap-1.5">
+                  <Baby className="w-3.5 h-3.5 text-rose-700" />
+                  Table 8: Minor Safeguarding & Street Children Surveillance (N={childrenMetrics.totalChildren} Children)
+                </h3>
+                <span className="text-[10px] text-rose-700 font-bold font-mono">
+                  Children's Act Statutory Safeguarding
+                </span>
+              </div>
+              {childrenMetrics.familyCount === 0 ? (
+                <div className="p-3 border border-slate-300 rounded bg-slate-50 text-[11px] text-slate-600">
+                  No minor children currently reported residing on streets in this cohort. Ongoing screening monitoring active.
+                </div>
+              ) : (
+                <table className="w-full text-left text-[10px] border-collapse border border-slate-300">
+                  <thead className="bg-rose-900 text-white uppercase font-bold text-[9px]">
+                    <tr>
+                      <th className="p-2 border border-slate-300">Caregiver Ref # & Name</th>
+                      <th className="p-2 border border-slate-300">Sleeping Spot / Hotspot</th>
+                      <th className="p-2 border border-slate-300 text-center">Children Count</th>
+                      <th className="p-2 border border-slate-300 text-center">Reported Ages</th>
+                      <th className="p-2 border border-slate-300 text-center">Family Shelter Request</th>
+                      <th className="p-2 border border-slate-300">Safeguarding Disposition</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {childrenMetrics.cases.map((c) => (
+                      <tr key={c.ref} className="bg-rose-50/40">
+                        <td className="p-2 border border-slate-300 font-bold text-slate-900">
+                          {c.name} <span className="text-slate-500 font-mono text-[9px]">({c.ref})</span>
+                        </td>
+                        <td className="p-2 border border-slate-300 text-slate-700">{c.site}</td>
+                        <td className="p-2 border border-slate-300 text-center font-mono font-bold text-rose-800">
+                          {c.count} minor(s)
+                        </td>
+                        <td className="p-2 border border-slate-300 text-center font-mono">{c.ages}</td>
+                        <td className="p-2 border border-slate-300 text-center">
+                          <span className={`px-1.5 py-0.5 rounded font-bold text-[9px] ${
+                            c.wantsShelter === 'Yes'
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                              : 'bg-amber-100 text-amber-800 border border-amber-300'
+                          }`}>
+                            {c.wantsShelter}
+                          </span>
+                        </td>
+                        <td className="p-2 border border-slate-300 text-[9px] text-rose-900 font-semibold">
+                          Immediate Child Protection Unit (DSD) & Mother-Child Shelter Referral
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Table 9: Clinical & Psychosocial Health Counseling Demand & Distress Triage */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-black uppercase text-blue-950 flex items-center gap-1.5">
+                  <Brain className="w-3.5 h-3.5 text-sky-700" />
+                  Table 9: Clinical & Psychosocial Health Counseling Demand & Symptom Prevalence
+                </h3>
+                <span className="text-[10px] text-slate-500 font-mono">
+                  Mental Health Integration
+                </span>
+              </div>
+              <table className="w-full text-left text-[11px] border-collapse border border-slate-300">
+                <thead className="bg-slate-800 text-white text-[10px] uppercase font-bold">
+                  <tr>
+                    <th className="p-2 border border-slate-300">Psychosocial Metric / Domain</th>
+                    <th className="p-2 border border-slate-300 text-center">Count (N)</th>
+                    <th className="p-2 border border-slate-300 text-center">% of Cohort</th>
+                    <th className="p-2 border border-slate-300">Clinical Focus / Interventions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  <tr className="bg-sky-50/50">
+                    <td className="p-2 border border-slate-300 font-bold text-slate-900">
+                      Needs Clinical & Psychosocial Counseling
+                    </td>
+                    <td className="p-2 border border-slate-300 text-center font-mono font-bold text-sky-900">
+                      {counselingMetrics.needsYes}
+                    </td>
+                    <td className="p-2 border border-slate-300 text-center font-mono font-bold text-sky-900">
+                      {counselingMetrics.needsYesPct}%
+                    </td>
+                    <td className="p-2 border border-slate-300 text-[10px] text-slate-700">
+                      Enrolled into Dunwell on-site psychological support and social worker follow-up.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="p-2 border border-slate-300 font-bold text-slate-900">
+                      Severe Mental Health Crisis / Red Flag
+                    </td>
+                    <td className="p-2 border border-slate-300 text-center font-mono font-bold text-rose-700">
+                      {psychosocialMetrics.crisis}
+                    </td>
+                    <td className="p-2 border border-slate-300 text-center font-mono text-rose-700 font-bold">
+                      {total ? Math.round((psychosocialMetrics.crisis / total) * 100) : 0}%
+                    </td>
+                    <td className="p-2 border border-slate-300 text-[10px] text-rose-800 font-semibold">
+                      Same-day psychiatric medical review & crisis containment protocol.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="p-2 border border-slate-300 font-bold text-slate-900">
+                      Top Counseling Focus Areas
+                    </td>
+                    <td colSpan={3} className="p-2 border border-slate-300 text-[10px]">
+                      <div className="flex flex-wrap gap-1.5">
+                        {counselingMetrics.focusList.slice(0, 5).map((f) => (
+                          <span key={f.area} className="bg-sky-50 text-sky-900 border border-sky-200 px-2 py-0.5 rounded font-semibold">
+                            {f.area}: {f.count} ({f.pct}%)
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="p-2 border border-slate-300 font-bold text-slate-900">
+                      Top Reported Symptoms (Psychosocial Tick Form)
+                    </td>
+                    <td colSpan={3} className="p-2 border border-slate-300 text-[10px]">
+                      <div className="flex flex-wrap gap-1.5">
+                        {psychosocialMetrics.symptomsList.slice(0, 5).map((s) => (
+                          <span key={s.label} className="bg-slate-100 text-slate-800 border border-slate-200 px-2 py-0.5 rounded">
+                            {s.label}: <strong>{s.count}</strong> ({s.pct}%)
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* Table 10: Skills Development & Vocational Training Programs */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-black uppercase text-blue-950 flex items-center gap-1.5">
+                  <GraduationCap className="w-3.5 h-3.5 text-purple-700" />
+                  Table 10: Skills Development & Vocational Training Program Readiness
+                </h3>
+                <span className="text-[10px] text-slate-500 font-mono">
+                  Economic Re-integration Pipeline
+                </span>
+              </div>
+              <table className="w-full text-left text-[11px] border-collapse border border-slate-300">
+                <thead className="bg-slate-800 text-white text-[10px] uppercase font-bold">
+                  <tr>
+                    <th className="p-2 border border-slate-300">Skills Metric / Trade Category</th>
+                    <th className="p-2 border border-slate-300 text-center">Interested (N)</th>
+                    <th className="p-2 border border-slate-300 text-center">% of Cohort</th>
+                    <th className="p-2 border border-slate-300">Institutional Partner / Training Pathway</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  <tr className="bg-purple-50/50">
+                    <td className="p-2 border border-slate-300 font-bold text-slate-900">
+                      Total Seeking Skills Development
+                    </td>
+                    <td className="p-2 border border-slate-300 text-center font-mono font-bold text-purple-900">
+                      {skillsMetrics.interestedYes}
+                    </td>
+                    <td className="p-2 border border-slate-300 text-center font-mono font-bold text-purple-900">
+                      {skillsMetrics.interestPct}%
+                    </td>
+                    <td className="p-2 border border-slate-300 text-[10px] text-slate-700">
+                      COJ Skills Centre, TVET College bursaries & SETA artisan learnerships.
+                    </td>
+                  </tr>
+                  {skillsMetrics.skillsRanked.slice(0, 6).map((skill) => (
+                    <tr key={skill.skill}>
+                      <td className="p-2 border border-slate-300 font-bold text-slate-800">
+                        {skill.skill}
+                      </td>
+                      <td className="p-2 border border-slate-300 text-center font-mono font-bold text-purple-800">
+                        {skill.count}
+                      </td>
+                      <td className="p-2 border border-slate-300 text-center font-mono">
+                        {skill.pct}%
+                      </td>
+                      <td className="p-2 border border-slate-300 text-[10px] text-slate-600">
+                        Accredited short-course & apprenticeship intake list
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Table 11: Master Screening Roll & Ledger of All Screened Persons */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-xs font-black uppercase text-blue-950 flex items-center gap-1.5">
                   <Users className="w-3.5 h-3.5 text-blue-900" />
-                  Table 7: Master Screening Ledger of All Screened Individuals (N={total})
+                  Table 11: Master Screening Ledger of All Screened Individuals (N={total})
                 </h3>
                 <span className="text-[10px] text-slate-500 font-mono">
                   POPIA & National Health Act Verified (All Consents Signed)
@@ -731,11 +1392,11 @@ export const BatchReportModal: React.FC<BatchReportModalProps> = ({
                     <th className="p-1 border border-slate-300">Full Name / Alias</th>
                     <th className="p-1 border border-slate-300">Physical Sleeping Spot</th>
                     <th className="p-1 border border-slate-300">Gender / Age / Race</th>
-                    <th className="p-1 border border-slate-300">Nationality & Language</th>
                     <th className="p-1 border border-slate-300">Hotspot Site</th>
                     <th className="p-1 border border-slate-300">Vitals / BP</th>
                     <th className="p-1 border border-slate-300">HTS Status</th>
                     <th className="p-1 border border-slate-300">Substances</th>
+                    <th className="p-1 border border-slate-300">Shelter & Clinical Action Plan</th>
                     <th className="p-1 border border-slate-300">Triage</th>
                     <th className="p-1 border border-slate-300 text-center">Consent</th>
                   </tr>
@@ -764,10 +1425,6 @@ export const BatchReportModal: React.FC<BatchReportModalProps> = ({
                         )}
                       </td>
                       <td className="p-1 border border-slate-300 text-[8px]">
-                        <span className="block font-semibold text-slate-800">{r.personal.nationality}</span>
-                        <span className="block text-slate-500">Lang: {r.personal.homeLanguage || 'isiZulu'}</span>
-                      </td>
-                      <td className="p-1 border border-slate-300 text-[8px]">
                         {r.outreachSite.replace(' / Inner-City Outreach', '')}
                       </td>
                       <td className="p-1 border border-slate-300 font-mono whitespace-nowrap text-[8px]">
@@ -785,9 +1442,33 @@ export const BatchReportModal: React.FC<BatchReportModalProps> = ({
                         </span>
                       </td>
                       <td className="p-1 border border-slate-300 text-[8px]">
-                        <span className="truncate block max-w-[90px] font-medium">
+                        <span className="truncate block max-w-[85px] font-medium">
                           {r.substance.substanceTypes.join(', ')}
                         </span>
+                      </td>
+                      <td className="p-1 border border-slate-300 text-[8px]">
+                        <div className="space-y-0.5 leading-tight">
+                          <span className={`inline-block px-1 py-0.2 rounded font-bold text-[7.5px] ${
+                            r.actionPlan.wantsCojShelter === 'Yes'
+                              ? 'bg-emerald-100 text-emerald-900'
+                              : 'bg-slate-100 text-slate-700'
+                          }`}>
+                            Shelter: {r.actionPlan.wantsCojShelter || 'Unset'}
+                          </span>
+                          {r.actionPlan.hasChildrenOnStreets === 'Yes' && (
+                            <span className="block text-[7.5px] font-bold text-rose-700">
+                              ⚠ {r.actionPlan.childrenCount || 1} Minor(s) on street
+                            </span>
+                          )}
+                          <div className="text-[7.5px] text-slate-600 flex gap-1">
+                            {r.actionPlan.needsClinicalPsychosocialCounseling === 'Yes' && (
+                              <span>💬 Counseling</span>
+                            )}
+                            {r.actionPlan.interestedInSkillsDevelopment === 'Yes' && (
+                              <span>🎓 Skills</span>
+                            )}
+                          </div>
+                        </div>
                       </td>
                       <td className="p-1 border border-slate-300 font-bold text-[8px]">
                         <span

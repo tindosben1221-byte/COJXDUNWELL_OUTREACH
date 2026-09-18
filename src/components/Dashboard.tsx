@@ -25,6 +25,11 @@ import {
   ShieldCheck,
   FileSignature,
   Brain,
+  Home,
+  Baby,
+  GraduationCap,
+  Clock,
+  LifeBuoy,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -62,6 +67,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [substanceFilter, setSubstanceFilter] = useState('ALL');
   const [youthOnly, setYouthOnly] = useState(false);
   const [rehabOnly, setRehabOnly] = useState(false);
+  const [shelterFilter, setShelterFilter] = useState<'ALL' | 'YES' | 'UNDECIDED' | 'NO'>('ALL');
+  const [childrenOnly, setChildrenOnly] = useState(false);
+  const [counselingOnly, setCounselingOnly] = useState(false);
+  const [skillsOnly, setSkillsOnly] = useState(false);
+
+  // Category view filter for analytics
+  const [activeCategoryTab, setActiveCategoryTab] = useState<'all' | 'shelter' | 'children' | 'counseling' | 'skills' | 'substance' | 'hts'>('all');
 
   // Tab switcher for analytical presentation: 'both' | 'tables' | 'charts'
   const [analyticsView, setAnalyticsView] = useState<'both' | 'tables' | 'charts'>('both');
@@ -92,9 +104,42 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       const matchRehab = !rehabOnly || rec.substance.interestInRehabSupport.includes('Yes');
 
-      return matchSearch && matchSite && matchSubstance && matchYouth && matchRehab;
+      const matchShelter =
+        shelterFilter === 'ALL' ||
+        (shelterFilter === 'YES' && rec.actionPlan.wantsCojShelter === 'Yes') ||
+        (shelterFilter === 'UNDECIDED' && rec.actionPlan.wantsCojShelter === 'Undecided') ||
+        (shelterFilter === 'NO' && (rec.actionPlan.wantsCojShelter === 'No' || !rec.actionPlan.wantsCojShelter));
+
+      const matchChildren = !childrenOnly || rec.actionPlan.hasChildrenOnStreets === 'Yes';
+
+      const matchCounseling = !counselingOnly || rec.actionPlan.needsClinicalPsychosocialCounseling === 'Yes';
+
+      const matchSkills = !skillsOnly || rec.actionPlan.interestedInSkillsDevelopment === 'Yes';
+
+      return (
+        matchSearch &&
+        matchSite &&
+        matchSubstance &&
+        matchYouth &&
+        matchRehab &&
+        matchShelter &&
+        matchChildren &&
+        matchCounseling &&
+        matchSkills
+      );
     });
-  }, [records, searchTerm, siteFilter, substanceFilter, youthOnly, rehabOnly]);
+  }, [
+    records,
+    searchTerm,
+    siteFilter,
+    substanceFilter,
+    youthOnly,
+    rehabOnly,
+    shelterFilter,
+    childrenOnly,
+    counselingOnly,
+    skillsOnly,
+  ]);
 
   // High-level Live Metrics
   const totalScreened = records.length;
@@ -130,6 +175,204 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const psychosocialTraumaCount = records.filter(
     (r) => r.psychosocial?.symptoms.recentGbvOrAssault || r.psychosocial?.symptoms.traumaFlashbacks
   ).length;
+
+  // Step 5: Clinical Action Plan & Psychosocial Deep Metrics
+  // 1. Shelter Demand Stats
+  const shelterStats = useMemo(() => {
+    const wantsYes = records.filter((r) => r.actionPlan.wantsCojShelter === 'Yes').length;
+    const wantsUndecided = records.filter((r) => r.actionPlan.wantsCojShelter === 'Undecided').length;
+    const wantsNo = records.filter((r) => r.actionPlan.wantsCojShelter === 'No' || !r.actionPlan.wantsCojShelter).length;
+
+    const stayedYes = records.filter((r) => r.actionPlan.stayedAtCojShelterBefore === 'Yes').length;
+    const stayedNo = records.filter((r) => r.actionPlan.stayedAtCojShelterBefore === 'No' || !r.actionPlan.stayedAtCojShelterBefore).length;
+
+    const freqMap: Record<string, number> = {
+      'Once': 0,
+      '2-3 Times': 0,
+      'Frequently / Multiple Times': 0,
+      'Never': 0,
+    };
+
+    const reasonsMap: Record<string, number> = {};
+
+    records.forEach((r) => {
+      if (r.actionPlan.stayedAtCojShelterBefore === 'Yes') {
+        const freq = r.actionPlan.shelterFrequency || 'Once';
+        freqMap[freq] = (freqMap[freq] || 0) + 1;
+        if (r.actionPlan.shelterReasonForLeaving?.trim()) {
+          const reason = r.actionPlan.shelterReasonForLeaving.trim();
+          reasonsMap[reason] = (reasonsMap[reason] || 0) + 1;
+        }
+      } else {
+        freqMap['Never'] = (freqMap['Never'] || 0) + 1;
+      }
+    });
+
+    const reasonsBreakdown = Object.entries(reasonsMap)
+      .map(([reason, count]) => ({
+        reason,
+        count,
+        pct: stayedYes ? Math.round((count / stayedYes) * 100) : 0,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      wantsYes,
+      wantsYesPct: totalScreened ? Math.round((wantsYes / totalScreened) * 100) : 0,
+      wantsUndecided,
+      wantsUndecidedPct: totalScreened ? Math.round((wantsUndecided / totalScreened) * 100) : 0,
+      wantsNo,
+      wantsNoPct: totalScreened ? Math.round((wantsNo / totalScreened) * 100) : 0,
+      stayedYes,
+      stayedYesPct: totalScreened ? Math.round((stayedYes / totalScreened) * 100) : 0,
+      stayedNo,
+      freqMap,
+      reasonsBreakdown,
+    };
+  }, [records, totalScreened]);
+
+  // 2. Street Children & Family Protection Stats
+  const streetChildrenStats = useMemo(() => {
+    const families = records.filter((r) => r.actionPlan.hasChildrenOnStreets === 'Yes');
+    const familyCount = families.length;
+    const totalChildren = families.reduce((sum, r) => sum + (Number(r.actionPlan.childrenCount) || 1), 0);
+    const familyPct = totalScreened ? Math.round((familyCount / totalScreened) * 100) : 0;
+
+    const cases = families.map((r) => ({
+      name: r.personal.fullName,
+      alias: r.personal.alias,
+      ref: r.refNumber,
+      site: r.outreachSite,
+      childrenCount: r.actionPlan.childrenCount || 1,
+      ages: r.actionPlan.childrenAges || 'Not specified',
+      wantsShelter: r.actionPlan.wantsCojShelter || 'No',
+    }));
+
+    return {
+      familyCount,
+      totalChildren,
+      familyPct,
+      cases,
+    };
+  }, [records, totalScreened]);
+
+  // 3. Clinical & Psychosocial Counseling Demand Stats
+  const counselingDemandStats = useMemo(() => {
+    const needsYes = records.filter((r) => r.actionPlan.needsClinicalPsychosocialCounseling === 'Yes').length;
+    const needsUndecided = records.filter((r) => r.actionPlan.needsClinicalPsychosocialCounseling === 'Undecided').length;
+    const needsNo = records.filter((r) => r.actionPlan.needsClinicalPsychosocialCounseling === 'No' || !r.actionPlan.needsClinicalPsychosocialCounseling).length;
+    const needsPct = totalScreened ? Math.round((needsYes / totalScreened) * 100) : 0;
+
+    const focusMap: Record<string, number> = {};
+    records.forEach((r) => {
+      if (r.actionPlan.counselingFocusAreas && Array.isArray(r.actionPlan.counselingFocusAreas)) {
+        r.actionPlan.counselingFocusAreas.forEach((area) => {
+          focusMap[area] = (focusMap[area] || 0) + 1;
+        });
+      }
+    });
+
+    const focusBreakdown = Object.entries(focusMap)
+      .map(([area, count]) => ({
+        area,
+        count,
+        pct: needsYes ? Math.round((count / needsYes) * 100) : 0,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      needsYes,
+      needsYesPct: needsPct,
+      needsUndecided,
+      needsNo,
+      focusBreakdown,
+    };
+  }, [records, totalScreened]);
+
+  // 4. Psychosocial Tick Form Deep Clinical Stats
+  const psychosocialDeepStats = useMemo(() => {
+    const evaluated = records.filter((r) => r.psychosocial);
+    const count = evaluated.length;
+    const mild = evaluated.filter((r) => r.psychosocial?.analysis.distressLevel === 'Mild / Minimal').length;
+    const moderate = evaluated.filter((r) => r.psychosocial?.analysis.distressLevel === 'Moderate').length;
+    const high = evaluated.filter((r) => r.psychosocial?.analysis.distressLevel === 'High').length;
+    const crisis = evaluated.filter((r) => r.psychosocial?.analysis.distressLevel === 'Severe Crisis' || r.psychosocial?.analysis.crisisAlert).length;
+    const crisisSuicideAlerts = evaluated.filter((r) => r.psychosocial?.analysis.crisisAlert).length;
+    const counselingLinked = evaluated.filter((r) => r.psychosocial?.counselingAccepted).length;
+
+    const symptomsList = [
+      { label: 'Sleep Disruption & Insomnia', count: evaluated.filter((r) => r.psychosocial?.symptoms.sleepDisturbance).length, icon: '🌙' },
+      { label: 'Chronic Depressive Affect & Sadness', count: evaluated.filter((r) => r.psychosocial?.symptoms.depressedMood).length, icon: '🌧️' },
+      { label: 'Loss of Purpose & Isolation', count: evaluated.filter((r) => r.psychosocial?.symptoms.extremeIsolation).length, icon: '🌫️' },
+      { label: 'Street Trauma Flashbacks & Fear', count: evaluated.filter((r) => r.psychosocial?.symptoms.traumaFlashbacks).length, icon: '⚡' },
+      { label: 'Panic, Rapid Heartbeat & Shaking', count: evaluated.filter((r) => r.psychosocial?.symptoms.panicSymptoms).length, icon: '❤️‍🔥' },
+      { label: 'Physical Assault / Recent GBV', count: evaluated.filter((r) => r.psychosocial?.symptoms.recentGbvOrAssault).length, icon: '🛡️' },
+      { label: 'Suicidal Ideation / Ending Life', count: evaluated.filter((r) => r.psychosocial?.symptoms.suicidalIdeation).length, icon: '⚠️' },
+      { label: 'Hallucinations & Severe Paranoia', count: evaluated.filter((r) => r.psychosocial?.symptoms.hallucinationsOrParanoia).length, icon: '🩺' },
+    ].map((s) => ({
+      ...s,
+      pct: count ? Math.round((s.count / count) * 100) : 0,
+    })).sort((a, b) => b.count - a.count);
+
+    return {
+      evaluatedCount: count,
+      mild,
+      moderate,
+      high,
+      crisis,
+      crisisSuicideAlerts,
+      counselingLinked,
+      symptomsList,
+    };
+  }, [records]);
+
+  // 5. Skills Development & Vocational Programs Stats
+  const skillsStats = useMemo(() => {
+    const interestedYes = records.filter((r) => r.actionPlan.interestedInSkillsDevelopment === 'Yes').length;
+    const interestedUndecided = records.filter((r) => r.actionPlan.interestedInSkillsDevelopment === 'Undecided').length;
+    const interestedNo = records.filter((r) => r.actionPlan.interestedInSkillsDevelopment === 'No' || !r.actionPlan.interestedInSkillsDevelopment).length;
+    const interestPct = totalScreened ? Math.round((interestedYes / totalScreened) * 100) : 0;
+
+    const skillsMap: Record<string, number> = {};
+    records.forEach((r) => {
+      if (r.actionPlan.skillsInterestAreas && Array.isArray(r.actionPlan.skillsInterestAreas)) {
+        r.actionPlan.skillsInterestAreas.forEach((skill) => {
+          skillsMap[skill] = (skillsMap[skill] || 0) + 1;
+        });
+      }
+    });
+
+    const skillsRanked = Object.entries(skillsMap)
+      .map(([skill, count]) => ({
+        skill,
+        count,
+        pct: interestedYes ? Math.round((count / interestedYes) * 100) : 0,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    return {
+      interestedYes,
+      interestPct,
+      interestedUndecided,
+      interestedNo,
+      skillsRanked,
+    };
+  }, [records, totalScreened]);
+
+  // Recharts Chart Formats for new stats
+  const shelterChartData = useMemo(() => [
+    { name: 'Wants Shelter', count: shelterStats.wantsYes, fill: '#10B981' },
+    { name: 'Undecided', count: shelterStats.wantsUndecided, fill: '#F59E0B' },
+    { name: 'Declines / Streets', count: shelterStats.wantsNo, fill: '#64748B' },
+    { name: 'Stayed Previously', count: shelterStats.stayedYes, fill: '#3B82F6' },
+  ], [shelterStats]);
+
+  const skillsChartData = useMemo(() => {
+    return skillsStats.skillsRanked.slice(0, 7).map((s) => ({
+      skill: s.skill.split('/')[0].trim(),
+      count: s.count,
+    }));
+  }, [skillsStats]);
 
   // Chart 1: Substance Prevalence Breakdown
   const substanceData = useMemo(() => {
@@ -835,62 +1078,180 @@ export const Dashboard: React.FC<DashboardProps> = ({
             {psychosocialCounselingCount} receptive to counseling
           </p>
         </div>
+
+        {/* KPI 7: COJ Shelter Demand */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm relative overflow-hidden">
+          <div className="flex items-center justify-between text-slate-500 mb-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider">Shelter Demand</span>
+            <div className="p-1.5 rounded-xl bg-emerald-50 text-emerald-700">
+              <Home className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-2xl sm:text-3xl font-black text-emerald-700 font-mono">
+              {shelterStats.wantsYes}
+            </span>
+            <span className="text-xs font-bold text-emerald-800">
+              ({shelterStats.wantsYesPct}%)
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-500 mt-1">
+            {shelterStats.stayedYes} stayed before ({shelterStats.stayedYesPct}%)
+          </p>
+        </div>
+
+        {/* KPI 8: Street Children Alert */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm relative overflow-hidden">
+          <div className="flex items-center justify-between text-slate-500 mb-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider">Street Minors</span>
+            <div className="p-1.5 rounded-xl bg-rose-50 text-rose-700">
+              <Baby className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-2xl sm:text-3xl font-black text-rose-700 font-mono">
+              {streetChildrenStats.totalChildren}
+            </span>
+            <span className="text-xs font-bold text-slate-600">
+              ({streetChildrenStats.familyCount} Families)
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-500 mt-1">
+            Emergency Child Safeguarding
+          </p>
+        </div>
+
+        {/* KPI 9: Clinical Counseling */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm relative overflow-hidden">
+          <div className="flex items-center justify-between text-slate-500 mb-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider">Counseling Need</span>
+            <div className="p-1.5 rounded-xl bg-sky-50 text-sky-700">
+              <LifeBuoy className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-2xl sm:text-3xl font-black text-sky-800 font-mono">
+              {counselingDemandStats.needsYes}
+            </span>
+            <span className="text-xs font-bold text-sky-900">
+              ({counselingDemandStats.needsYesPct}%)
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-500 mt-1">
+            Trauma, GBV & Addiction focus
+          </p>
+        </div>
+
+        {/* KPI 10: Skills Development Interest */}
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm relative overflow-hidden">
+          <div className="flex items-center justify-between text-slate-500 mb-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider">Skills & Jobs</span>
+            <div className="p-1.5 rounded-xl bg-purple-50 text-purple-700">
+              <GraduationCap className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-2xl sm:text-3xl font-black text-purple-700 font-mono">
+              {skillsStats.interestedYes}
+            </span>
+            <span className="text-xs font-bold text-purple-900">
+              ({skillsStats.interestPct}%)
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-500 mt-1">
+            Vocational training pathways
+          </p>
+        </div>
       </div>
 
-      {/* Analytical View Switcher & Header */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2 bg-blue-50 text-blue-900 rounded-xl">
-            <Table className="w-4 h-4" />
+      {/* Analytical View Switcher & Category Navigation Header */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-3">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-blue-50 text-blue-900 rounded-xl">
+              <Table className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide">
+                Statistical Analytics & Breakdown Tables
+              </h3>
+              <p className="text-xs text-slate-500">
+                Quantitative frequency tables, charts, and detailed public health analysis
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide">
-              Statistical Analytics & Breakdown Tables
-            </h3>
-            <p className="text-xs text-slate-500">
-              Quantitative frequency tables and visual indicators for public health officials
-            </p>
+
+          {/* View Mode Toggle Controls */}
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-300 text-xs">
+            <button
+              type="button"
+              onClick={() => setAnalyticsView('both')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition ${
+                analyticsView === 'both'
+                  ? 'bg-white text-blue-950 shadow-sm border border-slate-200'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5 text-blue-900" />
+              <span>Combined</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAnalyticsView('tables')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition ${
+                analyticsView === 'tables'
+                  ? 'bg-white text-blue-950 shadow-sm border border-slate-200'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Table className="w-3.5 h-3.5 text-amber-600" />
+              <span>Tables Only</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAnalyticsView('charts')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition ${
+                analyticsView === 'charts'
+                  ? 'bg-white text-blue-950 shadow-sm border border-slate-200'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <BarChart2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Charts Only</span>
+            </button>
           </div>
         </div>
 
-        {/* View Mode Toggle Controls */}
-        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-300 text-xs">
-          <button
-            type="button"
-            onClick={() => setAnalyticsView('both')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition ${
-              analyticsView === 'both'
-                ? 'bg-white text-blue-950 shadow-sm border border-slate-200'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <LayoutGrid className="w-3.5 h-3.5 text-blue-900" />
-            <span>Combined (Tables & Charts)</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setAnalyticsView('tables')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition ${
-              analyticsView === 'tables'
-                ? 'bg-white text-blue-950 shadow-sm border border-slate-200'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Table className="w-3.5 h-3.5 text-amber-600" />
-            <span>Statistical Tables Only</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setAnalyticsView('charts')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition ${
-              analyticsView === 'charts'
-                ? 'bg-white text-blue-950 shadow-sm border border-slate-200'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <BarChart2 className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Charts Only</span>
-          </button>
+        {/* Category Navigation Pills for Quick Access */}
+        <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5 overflow-x-auto text-xs pb-1">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 whitespace-nowrap">Focus:</span>
+          {[
+            { id: 'all', label: 'All Modules', icon: LayoutGrid },
+            { id: 'shelter', label: `COJ Shelter (${shelterStats.wantsYes})`, icon: Home },
+            { id: 'children', label: `Street Children (${streetChildrenStats.totalChildren})`, icon: Baby },
+            { id: 'counseling', label: `Psychosocial & Counseling (${counselingDemandStats.needsYes})`, icon: Brain },
+            { id: 'skills', label: `Skills & Vocational (${skillsStats.interestedYes})`, icon: GraduationCap },
+            { id: 'substance', label: `Substance & Rehab (${substanceUsersCount})`, icon: Flame },
+            { id: 'hts', label: `HTS Screening (${htsAcceptCount})`, icon: HeartPulse },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const active = activeCategoryTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveCategoryTab(tab.id as any)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition border ${
+                  active
+                    ? 'bg-blue-950 text-white border-blue-950 shadow-sm'
+                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                <Icon className={`w-3.5 h-3.5 ${active ? 'text-amber-400' : 'text-slate-500'}`} />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -1307,6 +1668,438 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
 
+          {/* Table 7: COJ Homeless Shelter Demand & Past Stay Surveillance */}
+          {(activeCategoryTab === 'all' || activeCategoryTab === 'shelter') && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <Home className="w-4 h-4 text-emerald-600" />
+                  <div>
+                    <h4 className="text-xs font-black uppercase text-blue-950 tracking-wider">
+                      Table 7: COJ Homeless Shelter Placement Demand & Prior Stay History
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      Shelter placement willingness, prior occupancy history, stay frequencies, and documented reasons for leaving
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-bold bg-emerald-50 text-emerald-800 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                    Want Shelter: {shelterStats.wantsYes} ({shelterStats.wantsYesPct}%)
+                  </span>
+                  <span className="text-[10px] font-mono font-bold bg-blue-50 text-blue-900 px-2.5 py-0.5 rounded-full border border-blue-200">
+                    Prior Stay: {shelterStats.stayedYes} ({shelterStats.stayedYesPct}%)
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                {/* Left: Desire to Stay & Past Stay Frequency */}
+                <div className="space-y-3">
+                  <span className="text-[11px] font-black uppercase text-slate-700 tracking-wider block">
+                    1. Shelter Placement Readiness & History
+                  </span>
+                  <table className="w-full text-left text-xs border-collapse border border-slate-200 rounded-xl overflow-hidden">
+                    <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-600 border-b border-slate-200">
+                      <tr>
+                        <th className="py-2 px-3">Indicator / Question</th>
+                        <th className="py-2 px-2 text-center">Status</th>
+                        <th className="py-2 px-2 text-center">Count (N)</th>
+                        <th className="py-2 px-2 text-center">% Cohort</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-[11px]">
+                      <tr>
+                        <td className="py-2 px-3 font-semibold text-slate-800" rowSpan={3}>
+                          Wants to stay at COJ Homeless Shelter?
+                        </td>
+                        <td className="py-2 px-2 text-center font-bold text-emerald-700">Yes</td>
+                        <td className="py-2 px-2 text-center font-mono font-bold text-blue-950">{shelterStats.wantsYes}</td>
+                        <td className="py-2 px-2 text-center font-mono font-semibold text-slate-700">{shelterStats.wantsYesPct}%</td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 px-2 text-center font-bold text-amber-700">Undecided</td>
+                        <td className="py-2 px-2 text-center font-mono font-bold text-blue-950">{shelterStats.wantsUndecided}</td>
+                        <td className="py-2 px-2 text-center font-mono font-semibold text-slate-700">{shelterStats.wantsUndecidedPct}%</td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 px-2 text-center font-bold text-slate-500">Declined / No</td>
+                        <td className="py-2 px-2 text-center font-mono font-bold text-blue-950">{shelterStats.wantsNo}</td>
+                        <td className="py-2 px-2 text-center font-mono font-semibold text-slate-700">{shelterStats.wantsNoPct}%</td>
+                      </tr>
+                      <tr className="bg-slate-50/50">
+                        <td className="py-2 px-3 font-semibold text-slate-800" rowSpan={2}>
+                          Stayed at COJ Shelter Before?
+                        </td>
+                        <td className="py-2 px-2 text-center font-bold text-blue-900">Yes</td>
+                        <td className="py-2 px-2 text-center font-mono font-bold text-blue-950">{shelterStats.stayedYes}</td>
+                        <td className="py-2 px-2 text-center font-mono font-semibold text-slate-700">{shelterStats.stayedYesPct}%</td>
+                      </tr>
+                      <tr className="bg-slate-50/50">
+                        <td className="py-2 px-2 text-center font-bold text-slate-500">No / Never</td>
+                        <td className="py-2 px-2 text-center font-mono font-bold text-blue-950">{shelterStats.stayedNo}</td>
+                        <td className="py-2 px-2 text-center font-mono font-semibold text-slate-700">
+                          {totalScreened ? Math.round((shelterStats.stayedNo / totalScreened) * 100) : 0}%
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 px-3 font-semibold text-slate-800" rowSpan={3}>
+                          Frequency of Prior Shelter Stays
+                        </td>
+                        <td className="py-2 px-2 text-center text-slate-700">Once</td>
+                        <td className="py-2 px-2 text-center font-mono font-bold text-blue-950">{shelterStats.freqMap['Once'] || 0}</td>
+                        <td className="py-2 px-2 text-center font-mono font-semibold text-slate-700">
+                          {totalScreened ? Math.round(((shelterStats.freqMap['Once'] || 0) / totalScreened) * 100) : 0}%
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 px-2 text-center text-slate-700">2-3 Times</td>
+                        <td className="py-2 px-2 text-center font-mono font-bold text-blue-950">{shelterStats.freqMap['2-3 Times'] || 0}</td>
+                        <td className="py-2 px-2 text-center font-mono font-semibold text-slate-700">
+                          {totalScreened ? Math.round(((shelterStats.freqMap['2-3 Times'] || 0) / totalScreened) * 100) : 0}%
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 px-2 text-center text-slate-700">Frequently</td>
+                        <td className="py-2 px-2 text-center font-mono font-bold text-blue-950">{shelterStats.freqMap['Frequently / Multiple Times'] || 0}</td>
+                        <td className="py-2 px-2 text-center font-mono font-semibold text-slate-700">
+                          {totalScreened ? Math.round(((shelterStats.freqMap['Frequently / Multiple Times'] || 0) / totalScreened) * 100) : 0}%
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Right: Reasons for Leaving Analysis */}
+                <div className="space-y-3">
+                  <span className="text-[11px] font-black uppercase text-slate-700 tracking-wider block">
+                    2. Primary Documented Reasons for Leaving COJ Shelter
+                  </span>
+                  {shelterStats.reasonsBreakdown.length === 0 ? (
+                    <div className="border border-dashed border-slate-200 rounded-xl p-6 text-center text-slate-500 text-xs">
+                      No reasons recorded yet for former shelter occupants.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {shelterStats.reasonsBreakdown.map((item) => (
+                        <div key={item.reason} className="p-2.5 rounded-xl border border-slate-200 bg-slate-50/50">
+                          <div className="flex items-center justify-between text-xs mb-1">
+                            <span className="font-bold text-slate-900 truncate max-w-[240px]">{item.reason}</span>
+                            <span className="font-mono font-bold text-blue-950 text-[11px]">
+                              {item.count} ({item.pct}% of previous occupants)
+                            </span>
+                          </div>
+                          <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-amber-500 rounded-full transition-all"
+                              style={{ width: `${Math.min(item.pct, 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-[11px] text-emerald-950 space-y-1">
+                    <span className="font-extrabold block uppercase tracking-wide">
+                      Shelter Placement Operational Protocol:
+                    </span>
+                    <p className="text-emerald-900 leading-relaxed">
+                      All clients expressing interest in shelter ({shelterStats.wantsYes} individuals) are fast-tracked for social worker assessment, TB symptom clearance, and transportation to 3 Kotze Overnight Shelter or Dan Street Family Shelter.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Table 8: Street Children & Minor Safeguarding Surveillance */}
+          {(activeCategoryTab === 'all' || activeCategoryTab === 'children') && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <Baby className="w-4 h-4 text-rose-600" />
+                  <div>
+                    <h4 className="text-xs font-black uppercase text-blue-950 tracking-wider">
+                      Table 8: Street Children & Minor Safeguarding Surveillance
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      Emergency child protection monitoring for homeless individuals accompanied by dependent minors on the streets
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-bold bg-rose-50 text-rose-700 px-2.5 py-0.5 rounded-full border border-rose-200">
+                    Total Minors on Streets: {streetChildrenStats.totalChildren}
+                  </span>
+                  <span className="text-[10px] font-mono font-bold bg-amber-50 text-amber-800 px-2.5 py-0.5 rounded-full border border-amber-200">
+                    Families: {streetChildrenStats.familyCount} ({streetChildrenStats.familyPct}%)
+                  </span>
+                </div>
+              </div>
+
+              {streetChildrenStats.cases.length === 0 ? (
+                <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                  <Baby className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                  <p className="text-xs font-bold text-slate-700">No accompanied minors currently recorded on the streets</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Continuous field surveillance active during nightly outreach sweeps.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-600 border-b border-slate-200">
+                      <tr>
+                        <th className="py-2.5 px-3">Primary Caregiver / Ref #</th>
+                        <th className="py-2.5 px-3">Outreach Site / Location</th>
+                        <th className="py-2.5 px-2.5 text-center">Minors Count</th>
+                        <th className="py-2.5 px-3">Documented Ages</th>
+                        <th className="py-2.5 px-2.5 text-center">Shelter Desire</th>
+                        <th className="py-2.5 px-3">Safeguarding Action Plan</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs">
+                      {streetChildrenStats.cases.map((c) => (
+                        <tr key={c.ref} className="hover:bg-slate-50/70 transition">
+                          <td className="py-3 px-3">
+                            <strong className="text-slate-900 block">{c.name}</strong>
+                            <span className="text-[10px] font-mono text-blue-900">{c.ref}</span>
+                          </td>
+                          <td className="py-3 px-3 text-slate-700">
+                            {c.site}
+                          </td>
+                          <td className="py-3 px-2.5 text-center font-mono font-bold text-rose-700 text-sm">
+                            {c.childrenCount}
+                          </td>
+                          <td className="py-3 px-3 font-semibold text-slate-800">
+                            {c.ages}
+                          </td>
+                          <td className="py-3 px-2.5 text-center">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              c.wantsShelter === 'Yes'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : c.wantsShelter === 'Undecided'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-slate-100 text-slate-700'
+                            }`}>
+                              {c.wantsShelter}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-[11px] text-slate-600">
+                            Immediate referral to COJ Department of Social Development & Child Welfare Johannesburg for emergency family shelter linkage.
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between text-[11px] text-rose-900">
+                <span className="font-semibold">
+                  Child Care Act Notice: All minors on the street trigger mandatory inter-sectoral referral to City of Johannesburg Social Services.
+                </span>
+                <span className="font-mono font-bold">100% Safeguarding Compliance</span>
+              </div>
+            </div>
+          )}
+
+          {/* Table 9: Clinical & Psychosocial Counseling Demand & Symptoms */}
+          {(activeCategoryTab === 'all' || activeCategoryTab === 'counseling') && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <Brain className="w-4 h-4 text-indigo-700" />
+                  <div>
+                    <h4 className="text-xs font-black uppercase text-blue-950 tracking-wider">
+                      Table 9: Clinical & Psychosocial Health Counseling Demand & Symptom Frequency
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      Counseling receptivity, psychiatric focus areas, and granular symptom prevalence from Psychosocial Tick Forms
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-bold bg-indigo-50 text-indigo-900 px-2.5 py-0.5 rounded-full border border-indigo-200">
+                    Need Counseling: {counselingDemandStats.needsYes} ({counselingDemandStats.needsYesPct}%)
+                  </span>
+                  <span className="text-[10px] font-mono font-bold bg-rose-50 text-rose-700 px-2.5 py-0.5 rounded-full border border-rose-200">
+                    Suicide Crisis Alerts: {psychosocialDeepStats.crisisSuicideAlerts}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                {/* Left: Counseling Demand & Focus Areas */}
+                <div className="space-y-3">
+                  <span className="text-[11px] font-black uppercase text-slate-700 tracking-wider block">
+                    1. Receptivity to Clinical & Psychosocial Counseling
+                  </span>
+                  <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                    <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl">
+                      <span className="text-[10px] font-bold text-indigo-900 uppercase block">Desires Counseling</span>
+                      <span className="text-xl font-mono font-black text-indigo-950 block mt-1">{counselingDemandStats.needsYes}</span>
+                      <span className="text-[10px] text-indigo-700 font-bold">({counselingDemandStats.needsYesPct}%)</span>
+                    </div>
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                      <span className="text-[10px] font-bold text-amber-800 uppercase block">Undecided</span>
+                      <span className="text-xl font-mono font-black text-amber-900 block mt-1">{counselingDemandStats.needsUndecided}</span>
+                      <span className="text-[10px] text-amber-700 font-bold">
+                        ({totalScreened ? Math.round((counselingDemandStats.needsUndecided / totalScreened) * 100) : 0}%)
+                      </span>
+                    </div>
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                      <span className="text-[10px] font-bold text-slate-600 uppercase block">Declined</span>
+                      <span className="text-xl font-mono font-black text-slate-900 block mt-1">{counselingDemandStats.needsNo}</span>
+                      <span className="text-[10px] text-slate-500 font-bold">
+                        ({totalScreened ? Math.round((counselingDemandStats.needsNo / totalScreened) * 100) : 0}%)
+                      </span>
+                    </div>
+                  </div>
+
+                  <span className="text-[11px] font-black uppercase text-slate-700 tracking-wider block pt-2">
+                    Priority Counseling Focus Areas
+                  </span>
+                  <div className="space-y-1.5">
+                    {counselingDemandStats.focusBreakdown.map((item) => (
+                      <div key={item.area} className="flex items-center justify-between p-2 rounded-lg border border-slate-200 bg-slate-50/50 text-xs">
+                        <span className="font-semibold text-slate-800">{item.area}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-indigo-950">{item.count}</span>
+                          <span className="text-[10px] font-mono text-slate-500 font-bold">({item.pct}%)</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Right: Granular Symptoms from Psychosocial Tick Form */}
+                <div className="space-y-3">
+                  <span className="text-[11px] font-black uppercase text-slate-700 tracking-wider block">
+                    2. Psychosocial Tick Form Symptom Prevalence (N={psychosocialDeepStats.evaluatedCount})
+                  </span>
+                  <div className="space-y-2 text-xs">
+                    {psychosocialDeepStats.symptomsList.map((sym) => (
+                      <div key={sym.label} className="p-2 rounded-xl border border-slate-200 bg-slate-50/50">
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                            <span>{sym.icon}</span>
+                            <span>{sym.label}</span>
+                          </span>
+                          <span className="font-mono font-bold text-blue-950 text-[11px]">
+                            {sym.count} ({sym.pct}%)
+                          </span>
+                        </div>
+                        <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${
+                              sym.label.includes('Suicidal') || sym.label.includes('Assault')
+                                ? 'bg-rose-600'
+                                : sym.label.includes('Flashbacks') || sym.label.includes('Panic')
+                                ? 'bg-amber-500'
+                                : 'bg-indigo-600'
+                            }`}
+                            style={{ width: `${Math.min(sym.pct, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Table 10: Skills Development & Vocational Training Demand */}
+          {(activeCategoryTab === 'all' || activeCategoryTab === 'skills') && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <GraduationCap className="w-4 h-4 text-purple-700" />
+                  <div>
+                    <h4 className="text-xs font-black uppercase text-blue-950 tracking-wider">
+                      Table 10: Skills Development & Vocational Training Programs Demand
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      Economic reintegration readiness, vocational trade preferences, and capacity-building program linkages
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-bold bg-purple-50 text-purple-700 px-2.5 py-0.5 rounded-full border border-purple-200">
+                    Wants Skills Training: {skillsStats.interestedYes} ({skillsStats.interestPct}%)
+                  </span>
+                  <span className="text-[10px] font-mono font-bold bg-blue-50 text-blue-900 px-2.5 py-0.5 rounded-full border border-blue-200">
+                    Trades Surveyed: {skillsStats.skillsRanked.length}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                {/* Left: Overall Readiness Breakdown */}
+                <div className="space-y-3">
+                  <span className="text-[11px] font-black uppercase text-slate-700 tracking-wider block">
+                    1. Interest in Skills Development Programs
+                  </span>
+                  <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                    <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl">
+                      <span className="text-[10px] font-bold text-purple-900 uppercase block">Interested (Yes)</span>
+                      <span className="text-xl font-mono font-black text-purple-950 block mt-1">{skillsStats.interestedYes}</span>
+                      <span className="text-[10px] text-purple-700 font-bold">({skillsStats.interestPct}%)</span>
+                    </div>
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                      <span className="text-[10px] font-bold text-amber-800 uppercase block">Undecided</span>
+                      <span className="text-xl font-mono font-black text-amber-900 block mt-1">{skillsStats.interestedUndecided}</span>
+                      <span className="text-[10px] text-amber-700 font-bold">
+                        ({totalScreened ? Math.round((skillsStats.interestedUndecided / totalScreened) * 100) : 0}%)
+                      </span>
+                    </div>
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                      <span className="text-[10px] font-bold text-slate-600 uppercase block">Not Interested</span>
+                      <span className="text-xl font-mono font-black text-slate-900 block mt-1">{skillsStats.interestedNo}</span>
+                      <span className="text-[10px] text-slate-500 font-bold">
+                        ({totalScreened ? Math.round((skillsStats.interestedNo / totalScreened) * 100) : 0}%)
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-700 space-y-1.5">
+                    <span className="font-extrabold text-blue-950 block uppercase tracking-wide">
+                      Economic Reintegration Strategy:
+                    </span>
+                    <p className="text-slate-600 leading-relaxed">
+                      Skills development is proven as the highest-yield exit pathway from chronic homelessness. Clients expressing interest will be linked directly to City of Johannesburg Department of Economic Development, Opportunity Centres, and SETA-accredited vocational colleges.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Right: Ranked Vocational Trades Breakdown */}
+                <div className="space-y-3">
+                  <span className="text-[11px] font-black uppercase text-slate-700 tracking-wider block">
+                    2. Ranked Demand for Vocational Trade Programs
+                  </span>
+                  <div className="space-y-2 text-xs max-h-[300px] overflow-y-auto pr-1">
+                    {skillsStats.skillsRanked.map((item) => (
+                      <div key={item.skill} className="p-2.5 rounded-xl border border-slate-200 bg-slate-50/50">
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span className="font-bold text-slate-900">{item.skill}</span>
+                          <span className="font-mono font-bold text-purple-950 text-[11px]">
+                            {item.count} ({item.pct}%)
+                          </span>
+                        </div>
+                        <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-purple-600 rounded-full transition-all"
+                            style={{ width: `${Math.min(item.pct, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Demographic & Geospatial Intelligence Surveillance (Address, Gender, Age, Race, Nationality & Languages) */}
           <DemographicStatsSection
             totalScreened={totalScreened}
@@ -1497,6 +2290,152 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </ResponsiveContainer>
             </div>
           </div>
+
+          {/* Chart 5: COJ Shelter Intake Desire & Prior Stay History */}
+          {(activeCategoryTab === 'all' || activeCategoryTab === 'shelter') && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+                    <Home className="w-4 h-4 text-emerald-600" />
+                    COJ Shelter Placement Demand & Prior Stays
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Willingness to transition into COJ shelter facilities vs previous occupancy
+                  </p>
+                </div>
+                <span className="text-[10px] bg-emerald-50 text-emerald-800 px-2.5 py-0.5 rounded-full font-bold border border-emerald-200">
+                  {shelterStats.wantsYesPct}% Desiring Shelter
+                </span>
+              </div>
+
+              <div className="h-64 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={shelterChartData} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
+                    <XAxis dataKey="name" stroke="#64748B" fontSize={10} />
+                    <YAxis stroke="#64748B" fontSize={11} allowDecimals={false} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#FFFFFF',
+                        borderColor: '#CBD5E1',
+                        borderRadius: '12px',
+                        color: '#0F172A',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.06)',
+                      }}
+                    />
+                    <Bar dataKey="count" name="Persons" radius={[6, 6, 0, 0]}>
+                      {shelterChartData.map((entry, index) => (
+                        <Cell key={`shelter-cell-${index}`} fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {/* Chart 6: Skills Development & Vocational Program Preferences */}
+          {(activeCategoryTab === 'all' || activeCategoryTab === 'skills') && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+                    <GraduationCap className="w-4 h-4 text-purple-700" />
+                    Skills Development & Vocational Program Preferences
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Ranked vocational trade interest for economic reintegration
+                  </p>
+                </div>
+                <span className="text-[10px] bg-purple-50 text-purple-800 px-2.5 py-0.5 rounded-full font-bold border border-purple-200">
+                  {skillsStats.interestPct}% Interested
+                </span>
+              </div>
+
+              <div className="h-64 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={skillsChartData}
+                    layout="vertical"
+                    margin={{ top: 10, right: 20, left: 40, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
+                    <XAxis type="number" stroke="#64748B" fontSize={11} allowDecimals={false} />
+                    <YAxis dataKey="skill" type="category" stroke="#64748B" fontSize={10} width={110} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#FFFFFF',
+                        borderColor: '#CBD5E1',
+                        borderRadius: '12px',
+                        color: '#0F172A',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.06)',
+                      }}
+                    />
+                    <Bar dataKey="count" name="Interested Persons" fill="#8B5CF6" radius={[0, 6, 6, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {/* Chart 7: Psychosocial Symptoms & Mental Health Distress */}
+          {(activeCategoryTab === 'all' || activeCategoryTab === 'counseling') && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm lg:col-span-2">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+                    <Brain className="w-4 h-4 text-indigo-700" />
+                    Psychosocial Tick Form Symptom Profile & Distress Staging
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Key symptoms tracked by Dunwell mental health counselors in the field
+                  </p>
+                </div>
+                <span className="text-[10px] bg-indigo-50 text-indigo-900 px-2.5 py-0.5 rounded-full font-bold border border-indigo-200">
+                  {counselingDemandStats.needsYes} Requesting Counseling
+                </span>
+              </div>
+
+              <div className="h-64 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={psychosocialDeepStats.symptomsList.map((s) => ({
+                      name: s.label.split('/')[0].split('&')[0].trim(),
+                      count: s.count,
+                      pct: s.pct,
+                    }))}
+                    margin={{ top: 10, right: 10, left: -20, bottom: 35 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
+                    <XAxis
+                      dataKey="name"
+                      stroke="#64748B"
+                      fontSize={10}
+                      angle={-20}
+                      textAnchor="end"
+                      interval={0}
+                    />
+                    <YAxis stroke="#64748B" fontSize={11} allowDecimals={false} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#FFFFFF',
+                        borderColor: '#CBD5E1',
+                        borderRadius: '12px',
+                        color: '#0F172A',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.06)',
+                      }}
+                      formatter={(val: any, _name: any, item: any) => [
+                        `${val} persons (${item.payload.pct}%)`,
+                        'Prevalence',
+                      ]}
+                    />
+                    <Bar dataKey="count" name="Symptom Count" fill="#4F46E5" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1585,11 +2524,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {/* Quick Toggle Pills */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1 flex-wrap lg:col-span-5 pt-1">
+              <span className="text-[11px] font-bold text-slate-500 mr-1">Quick Filters:</span>
               <button
                 type="button"
                 onClick={() => setYouthOnly(!youthOnly)}
-                className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-bold border transition ${
+                className={`py-1.5 px-2.5 rounded-lg text-xs font-bold border transition ${
                   youthOnly
                     ? 'bg-blue-900 text-white border-blue-950 shadow-sm'
                     : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
@@ -1600,13 +2540,61 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <button
                 type="button"
                 onClick={() => setRehabOnly(!rehabOnly)}
-                className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-bold border transition ${
+                className={`py-1.5 px-2.5 rounded-lg text-xs font-bold border transition ${
                   rehabOnly
-                    ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm'
+                    ? 'bg-emerald-700 text-white border-emerald-800 shadow-sm'
                     : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
                 }`}
               >
                 Rehab Yes
+              </button>
+              <button
+                type="button"
+                onClick={() => setShelterFilter(shelterFilter === 'YES' ? 'ALL' : 'YES')}
+                className={`py-1.5 px-2.5 rounded-lg text-xs font-bold border transition flex items-center gap-1 ${
+                  shelterFilter === 'YES'
+                    ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm'
+                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                }`}
+              >
+                <Home className="w-3 h-3" />
+                <span>Wants Shelter</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setChildrenOnly(!childrenOnly)}
+                className={`py-1.5 px-2.5 rounded-lg text-xs font-bold border transition flex items-center gap-1 ${
+                  childrenOnly
+                    ? 'bg-rose-600 text-white border-rose-700 shadow-sm'
+                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                }`}
+              >
+                <Baby className="w-3 h-3" />
+                <span>Minors on Street</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setCounselingOnly(!counselingOnly)}
+                className={`py-1.5 px-2.5 rounded-lg text-xs font-bold border transition flex items-center gap-1 ${
+                  counselingOnly
+                    ? 'bg-sky-700 text-white border-sky-800 shadow-sm'
+                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                }`}
+              >
+                <LifeBuoy className="w-3 h-3" />
+                <span>Counseling Requested</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSkillsOnly(!skillsOnly)}
+                className={`py-1.5 px-2.5 rounded-lg text-xs font-bold border transition flex items-center gap-1 ${
+                  skillsOnly
+                    ? 'bg-purple-700 text-white border-purple-800 shadow-sm'
+                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                }`}
+              >
+                <GraduationCap className="w-3 h-3" />
+                <span>Skills Training</span>
               </button>
             </div>
           </div>
@@ -1623,13 +2611,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <th className="py-3.5 px-3">HTS Screening</th>
                 <th className="py-3.5 px-3">Mental Health (Tick Form)</th>
                 <th className="py-3.5 px-3">Substance & Rehab</th>
+                <th className="py-3.5 px-3">Shelter & Clinical Action Plan</th>
                 <th className="py-3.5 px-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {records.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-14 text-center">
+                  <td colSpan={8} className="py-14 text-center">
                     <div className="max-w-md mx-auto flex flex-col items-center">
                       <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-900 mb-3 shadow-inner">
                         <Activity className="w-6 h-6 text-blue-700" />
@@ -1802,6 +2791,49 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         >
                           Rehab: {record.substance.interestInRehabSupport.includes('Yes') ? 'Requested' : 'Declined'}
                         </span>
+                      </td>
+
+                      {/* Col 7: Shelter & Clinical Action Plan */}
+                      <td className="py-3.5 px-3">
+                        <div className="space-y-1 text-[11px]">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`px-1.5 py-0.5 rounded font-bold text-[10px] ${
+                              record.actionPlan.wantsCojShelter === 'Yes'
+                                ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                                : record.actionPlan.wantsCojShelter === 'Undecided'
+                                ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}>
+                              Shelter: {record.actionPlan.wantsCojShelter || 'Unset'}
+                            </span>
+                            {record.actionPlan.stayedAtCojShelterBefore === 'Yes' && (
+                              <span className="text-[10px] bg-blue-100 text-blue-900 px-1.5 py-0.5 rounded font-medium">
+                                Past Stay: {record.actionPlan.shelterFrequency || 'Yes'}
+                              </span>
+                            )}
+                          </div>
+
+                          {record.actionPlan.hasChildrenOnStreets === 'Yes' && (
+                            <div className="text-[10px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 flex items-center gap-1">
+                              <Baby className="w-3 h-3" />
+                              <span>{record.actionPlan.childrenCount || 1} Minor(s) on Street</span>
+                              {record.actionPlan.childrenAges && <span>({record.actionPlan.childrenAges})</span>}
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-1 text-[10px] flex-wrap text-slate-600">
+                            {record.actionPlan.needsClinicalPsychosocialCounseling === 'Yes' && (
+                              <span className="bg-sky-50 text-sky-800 px-1.5 py-0.5 rounded font-semibold border border-sky-200">
+                                💬 Counseling
+                              </span>
+                            )}
+                            {record.actionPlan.interestedInSkillsDevelopment === 'Yes' && (
+                              <span className="bg-purple-50 text-purple-800 px-1.5 py-0.5 rounded font-semibold border border-purple-200">
+                                🎓 Skills Training
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </td>
 
                       {/* Actions */}

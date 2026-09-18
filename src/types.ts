@@ -206,9 +206,33 @@ export interface ConsentRecord {
 export type TriageLevel = 'Routine / Stable' | 'Moderate / Follow-up Needed' | 'Urgent / Priority Referral' | 'Emergency Medical Care';
 
 export interface ClinicalActionPlan {
+  // 1. Do they want to stay at COJ Homeless shelter
+  wantsCojShelter: 'Yes' | 'No' | 'Undecided' | 'Other' | string;
+  shelterPreferenceNotes?: string;
+
+  // 2. Do they have children staying with them on the streets
+  hasChildrenOnStreets: 'Yes' | 'No' | 'Other' | string;
+  childrenCount?: number;
+  childrenAges?: string;
+
+  // 3. Do they need clinical and psychosocial health like counselling
+  needsClinicalPsychosocialCounseling: 'Yes' | 'No' | 'Undecided' | 'Other' | string;
+  counselingFocusAreas?: string[];
+  counselingDetails?: string;
+
+  // 4. Have they stayed at COJ homeless shelter before and how frequent and reason for leaving
+  stayedAtCojShelterBefore: 'Yes' | 'No' | 'Other' | string;
+  shelterFrequency?: 'Never' | 'Once' | '2-3 Times' | 'Frequently / Multiple Times' | 'Other' | string;
+  shelterReasonForLeaving?: string;
+
+  // 5. Are they interested in skills development programs
+  interestedInSkillsDevelopment: 'Yes' | 'No' | 'Undecided' | 'Other' | string;
+  skillsInterestAreas?: string[];
+
+  // Clinical disposition fields
   immediateIntervention: string[];
-  referralDestination?: string; // e.g. "Dunwell Youth Priority Clinic", "COJ Health Mobile Unit", "Rehab Center (SANCA / Wedge Gardens)", "Social Development Shelter"
-  medicationsDispensed?: string[]; // e.g. "Paracetamol 500mg", "Amoxicillin 500mg", "Multivitamins", "Wound dressing", "Condoms"
+  referralDestination?: string;
+  medicationsDispensed?: string[];
   followUpDate?: string;
   screenerNotes?: string;
   triageLevel: TriageLevel;

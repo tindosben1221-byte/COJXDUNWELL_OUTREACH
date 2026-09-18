@@ -60,6 +60,11 @@ import {
   Pill,
   Building,
   Share2,
+  Home,
+  Baby,
+  GraduationCap,
+  FileText,
+  Plus,
 } from 'lucide-react';
 
 
@@ -182,7 +187,56 @@ export const ScreeningForm: React.FC<ScreeningFormProps> = ({
     screenerNotes: '',
   });
 
-  // Step 5: Clinical Action Plan & Referrals
+  // Step 5: Shelter, Social Support & Reintegration Plan
+  // 1. Do they want to stay at COJ Homeless shelter
+  const [wantsCojShelter, setWantsCojShelter] = useState<'Yes' | 'No' | 'Undecided' | 'Other'>('No');
+  const [shelterPreferenceNotes, setShelterPreferenceNotes] = useState('');
+
+  // 2. Do they have children staying with them on the streets
+  const [hasChildrenOnStreets, setHasChildrenOnStreets] = useState<'Yes' | 'No' | 'Other'>('No');
+  const [childrenCount, setChildrenCount] = useState<number>(0);
+  const [childrenAges, setChildrenAges] = useState('');
+  const [childrenOtherNotes, setChildrenOtherNotes] = useState('');
+
+  // 3. Do they need clinical and psychosocial health like counselling
+  const [needsClinicalCounseling, setNeedsClinicalCounseling] = useState<'Yes' | 'No' | 'Undecided' | 'Other'>('No');
+  const [counselingFocusAreas, setCounselingFocusAreas] = useState<string[]>([]);
+  const [counselingDetails, setCounselingDetails] = useState('');
+  const [customCounselingInput, setCustomCounselingInput] = useState('');
+
+  // 4. Have they stayed at COJ homeless shelter before and how frequent and reason for leaving
+  const [stayedAtShelterBefore, setStayedAtShelterBefore] = useState<'Yes' | 'No' | 'Other'>('No');
+  const [shelterFrequency, setShelterFrequency] = useState<string>('Never');
+  const [customFrequencyInput, setCustomFrequencyInput] = useState('');
+  const [shelterReasonForLeaving, setShelterReasonForLeaving] = useState('');
+
+  // 5. Are they interested in skills development programs
+  const [interestedInSkills, setInterestedInSkills] = useState<'Yes' | 'No' | 'Undecided' | 'Other'>('Yes');
+  const [skillsInterestAreas, setSkillsInterestAreas] = useState<string[]>([
+    'Computer & IT Literacy',
+    'Security Officer (PSIRA)',
+  ]);
+  const [customSkillInput, setCustomSkillInput] = useState('');
+
+  const handleAddCustomCounseling = () => {
+    const trimmed = customCounselingInput.trim();
+    if (!trimmed) return;
+    if (!counselingFocusAreas.includes(trimmed)) {
+      setCounselingFocusAreas([...counselingFocusAreas, trimmed]);
+    }
+    setCustomCounselingInput('');
+  };
+
+  const handleAddCustomSkill = () => {
+    const trimmed = customSkillInput.trim();
+    if (!trimmed) return;
+    if (!skillsInterestAreas.includes(trimmed)) {
+      setSkillsInterestAreas([...skillsInterestAreas, trimmed]);
+    }
+    setCustomSkillInput('');
+  };
+
+  // Outreach disposition fields
   const [triageLevel, setTriageLevel] = useState<TriageLevel>('Routine / Stable');
   const [immediateCare, setImmediateCare] = useState<string[]>([
     'Vitals Assessment',
@@ -355,12 +409,38 @@ export const ScreeningForm: React.FC<ScreeningFormProps> = ({
       },
       psychosocial: psychosocialScreening,
       actionPlan: {
+        wantsCojShelter,
+        shelterPreferenceNotes: shelterPreferenceNotes.trim() || undefined,
+        hasChildrenOnStreets,
+        childrenCount: hasChildrenOnStreets === 'Yes' ? Number(childrenCount) || 1 : 0,
+        childrenAges:
+          hasChildrenOnStreets === 'Yes'
+            ? childrenAges.trim() || undefined
+            : hasChildrenOnStreets === 'Other'
+            ? (childrenOtherNotes.trim() || undefined)
+            : undefined,
+        needsClinicalPsychosocialCounseling: needsClinicalCounseling,
+        counselingFocusAreas: needsClinicalCounseling !== 'No' ? counselingFocusAreas : [],
+        counselingDetails: counselingDetails.trim() || undefined,
+        stayedAtCojShelterBefore: stayedAtShelterBefore,
+        shelterFrequency:
+          stayedAtShelterBefore === 'Yes'
+            ? shelterFrequency === 'Other'
+              ? (customFrequencyInput.trim() || 'Other')
+              : shelterFrequency
+            : stayedAtShelterBefore === 'Other'
+            ? (customFrequencyInput.trim() || 'Other')
+            : 'Never',
+        shelterReasonForLeaving:
+          stayedAtShelterBefore !== 'No' ? shelterReasonForLeaving.trim() || undefined : undefined,
+        interestedInSkillsDevelopment: interestedInSkills,
+        skillsInterestAreas: interestedInSkills !== 'No' ? skillsInterestAreas : [],
         immediateIntervention: immediateCare.length ? immediateCare : ['Routine Outreach Assessment'],
         referralDestination,
         medicationsDispensed: medicationsDispensed.length ? medicationsDispensed : undefined,
         followUpDate: followUpDate || undefined,
         screenerNotes: actionNotes.trim() || undefined,
-        triageLevel,
+        triageLevel: triageLevel || 'Routine / Stable',
       },
       completedTools: ['personal', 'vitals', 'hts', 'substance', 'psychosocial', 'actionPlan'],
       isFullyCompleted: true,
@@ -441,13 +521,37 @@ export const ScreeningForm: React.FC<ScreeningFormProps> = ({
       setPsychosocialScreening(rec.psychosocial);
     }
 
-    // 5. Action Plan
-    setTriageLevel(rec.actionPlan.triageLevel);
-    setImmediateCare(rec.actionPlan.immediateIntervention);
-    setReferralDestination(rec.actionPlan.referralDestination || 'Dunwell Youth Priority Clinic (Walk-in)');
-    setMedicationsDispensed(rec.actionPlan.medicationsDispensed || []);
-    setFollowUpDate(rec.actionPlan.followUpDate || '');
-    setActionNotes(rec.actionPlan.screenerNotes || '');
+    // 5. Shelter, Social Support & Reintegration Plan
+    setWantsCojShelter((rec.actionPlan?.wantsCojShelter as any) || 'No');
+    setShelterPreferenceNotes(rec.actionPlan?.shelterPreferenceNotes || '');
+    setHasChildrenOnStreets((rec.actionPlan?.hasChildrenOnStreets as any) || 'No');
+    setChildrenCount(rec.actionPlan?.childrenCount || 0);
+    setChildrenAges(rec.actionPlan?.childrenAges || '');
+    setChildrenOtherNotes(rec.actionPlan?.hasChildrenOnStreets === 'Other' ? (rec.actionPlan?.childrenAges || '') : '');
+    setNeedsClinicalCounseling((rec.actionPlan?.needsClinicalPsychosocialCounseling as any) || 'No');
+    setCounselingFocusAreas(rec.actionPlan?.counselingFocusAreas || []);
+    setCounselingDetails(rec.actionPlan?.counselingDetails || '');
+    setCustomCounselingInput('');
+    setStayedAtShelterBefore((rec.actionPlan?.stayedAtCojShelterBefore as any) || 'No');
+    const freq = rec.actionPlan?.shelterFrequency || 'Never';
+    if (['Once', '2-3 Times', 'Frequently / Multiple Times', 'Never'].includes(freq)) {
+      setShelterFrequency(freq);
+      setCustomFrequencyInput('');
+    } else {
+      setShelterFrequency('Other');
+      setCustomFrequencyInput(freq);
+    }
+    setShelterReasonForLeaving(rec.actionPlan?.shelterReasonForLeaving || '');
+    setInterestedInSkills((rec.actionPlan?.interestedInSkillsDevelopment as any) || 'Yes');
+    setSkillsInterestAreas(rec.actionPlan?.skillsInterestAreas || ['Computer & IT Literacy', 'Security Officer (PSIRA)']);
+    setCustomSkillInput('');
+
+    setTriageLevel(rec.actionPlan?.triageLevel || 'Routine / Stable');
+    setImmediateCare(rec.actionPlan?.immediateIntervention || ['Routine Outreach Assessment']);
+    setReferralDestination(rec.actionPlan?.referralDestination || 'Dunwell Youth Priority Clinic (Walk-in)');
+    setMedicationsDispensed(rec.actionPlan?.medicationsDispensed || []);
+    setFollowUpDate(rec.actionPlan?.followUpDate || '');
+    setActionNotes(rec.actionPlan?.screenerNotes || '');
   };
 
   const handleClearForNewClient = () => {
@@ -467,6 +571,24 @@ export const ScreeningForm: React.FC<ScreeningFormProps> = ({
     setHtsReferralFacility('Dunwell Youth Priority Clinic');
     setHtsAdherence('Takes daily as prescribed (Good Adherence)');
     setHtsMedicationLocation('Dunwell Youth Priority Clinic');
+
+    setWantsCojShelter('No');
+    setShelterPreferenceNotes('');
+    setHasChildrenOnStreets('No');
+    setChildrenCount(0);
+    setChildrenAges('');
+    setChildrenOtherNotes('');
+    setNeedsClinicalCounseling('No');
+    setCounselingFocusAreas([]);
+    setCounselingDetails('');
+    setCustomCounselingInput('');
+    setStayedAtShelterBefore('No');
+    setShelterFrequency('Never');
+    setCustomFrequencyInput('');
+    setShelterReasonForLeaving('');
+    setInterestedInSkills('Yes');
+    setSkillsInterestAreas(['Computer & IT Literacy', 'Security Officer (PSIRA)']);
+    setCustomSkillInput('');
   };
 
   const handleSelectPerson = (personId: string) => {
@@ -478,14 +600,13 @@ export const ScreeningForm: React.FC<ScreeningFormProps> = ({
     }
   };
 
-  // Tool mapping for the steps (6-tool clinical workflow)
+  // Tool mapping for the steps (5-tool clinical workflow)
   const toolIdForStep: Record<number, ScreeningToolId> = {
     1: 'personal',
     2: 'vitals',
-    3: 'hts',
-    4: 'substance',
-    5: 'psychosocial',
-    6: 'actionPlan',
+    3: 'substance',
+    4: 'psychosocial',
+    5: 'actionPlan',
   };
 
   const currentToolId = toolIdForStep[currentStep] || 'personal';
@@ -601,6 +722,20 @@ export const ScreeningForm: React.FC<ScreeningFormProps> = ({
                 presentComplaintsNotes: complaintNotes.trim() || undefined,
                 tbScreeningSymptomatic: tbSymptomatic,
               },
+              hts: {
+                hivStatusKnown,
+                priorStatus: hivStatusKnown === 'Yes' ? (priorStatus || 'Unknown') : undefined,
+                acceptHtsTest,
+                testResult: htsResult,
+                onArt,
+                prepOffered,
+                condomsDistributed: Number(condomsDistributed) || 0,
+                notes: htsNotes.trim() || undefined,
+                referral: htsReferral,
+                referralFacility: htsReferral === 'Yes' ? htsReferralFacility : undefined,
+                adherence: htsAdherence.trim() || undefined,
+                medicationLocation: htsMedicationLocation.trim() || undefined,
+              },
             }
           : {}),
         ...(toolId === 'hts'
@@ -642,12 +777,38 @@ export const ScreeningForm: React.FC<ScreeningFormProps> = ({
         ...(toolId === 'actionPlan'
           ? {
               actionPlan: {
+                wantsCojShelter,
+                shelterPreferenceNotes: shelterPreferenceNotes.trim() || undefined,
+                hasChildrenOnStreets,
+                childrenCount: hasChildrenOnStreets === 'Yes' ? Number(childrenCount) || 1 : 0,
+                childrenAges:
+                  hasChildrenOnStreets === 'Yes'
+                    ? childrenAges.trim() || undefined
+                    : hasChildrenOnStreets === 'Other'
+                    ? (childrenOtherNotes.trim() || undefined)
+                    : undefined,
+                needsClinicalPsychosocialCounseling: needsClinicalCounseling,
+                counselingFocusAreas: needsClinicalCounseling !== 'No' ? counselingFocusAreas : [],
+                counselingDetails: counselingDetails.trim() || undefined,
+                stayedAtCojShelterBefore: stayedAtShelterBefore,
+                shelterFrequency:
+                  stayedAtShelterBefore === 'Yes'
+                    ? shelterFrequency === 'Other'
+                      ? (customFrequencyInput.trim() || 'Other')
+                      : shelterFrequency
+                    : stayedAtShelterBefore === 'Other'
+                    ? (customFrequencyInput.trim() || 'Other')
+                    : 'Never',
+                shelterReasonForLeaving:
+                  stayedAtShelterBefore !== 'No' ? shelterReasonForLeaving.trim() || undefined : undefined,
+                interestedInSkillsDevelopment: interestedInSkills,
+                skillsInterestAreas: interestedInSkills !== 'No' ? skillsInterestAreas : [],
                 immediateIntervention: immediateCare.length ? immediateCare : ['Routine Outreach Assessment'],
                 referralDestination,
                 medicationsDispensed: medicationsDispensed.length ? medicationsDispensed : undefined,
                 followUpDate: followUpDate || undefined,
                 screenerNotes: actionNotes.trim() || undefined,
-                triageLevel,
+                triageLevel: triageLevel || 'Routine / Stable',
               },
             }
           : {}),
@@ -679,14 +840,13 @@ export const ScreeningForm: React.FC<ScreeningFormProps> = ({
     }
   };
 
-  // Steps Navigation with live pending count badges (6-Step Clinical Intake Flow)
+  // Steps Navigation with live pending count badges (5-Step Clinical Intake Flow)
   const steps = [
     { num: 1, title: 'Personal Details', toolId: 'personal' as ScreeningToolId, icon: User },
-    { num: 2, title: 'Vitals Signs', toolId: 'vitals' as ScreeningToolId, icon: HeartPulse },
-    { num: 3, title: 'HTS Screening', toolId: 'hts' as ScreeningToolId, icon: ShieldCheck },
-    { num: 4, title: 'Substance & Rehab', toolId: 'substance' as ScreeningToolId, icon: Flame },
-    { num: 5, title: 'Psychosocial Tick Form', toolId: 'psychosocial' as ScreeningToolId, icon: Brain },
-    { num: 6, title: 'Clinical Action Plan', toolId: 'actionPlan' as ScreeningToolId, icon: Stethoscope },
+    { num: 2, title: 'Vitals Signs and HTS Screening', toolId: 'vitals' as ScreeningToolId, icon: HeartPulse },
+    { num: 3, title: 'Substance & Rehab', toolId: 'substance' as ScreeningToolId, icon: Flame },
+    { num: 4, title: 'Psychosocial Tick Form', toolId: 'psychosocial' as ScreeningToolId, icon: Brain },
+    { num: 5, title: 'Shelter & Social Reintegration', toolId: 'actionPlan' as ScreeningToolId, icon: Home },
   ];
 
 
@@ -1131,22 +1291,22 @@ export const ScreeningForm: React.FC<ScreeningFormProps> = ({
           </div>
         )}
 
-        {/* STEP 2: MEDICAL SCREENING & HTS */}
+        {/* STEP 2: VITALS SIGNS AND HTS SCREENING */}
         {currentStep === 2 && (
           <div className="space-y-6 animate-in fade-in duration-200">
             <div className="border-l-4 border-amber-500 pl-3">
               <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                <span className="text-amber-600 font-mono">2.</span> Medical Screening & Vitals
+                <span className="text-amber-600 font-mono">2.</span> Vitals Signs and HTS Screening
               </h3>
               <p className="text-xs text-slate-600">
-                Record baseline physical observations, chronic conditions, acute complaints, and HIV testing services (HTS).
+                Record baseline physical observations, clinical vital ranges (BP, Pulse, SpO2, MAP, Temp, BMI), chronic conditions, acute complaints, and confidential HIV Testing Services (HTS).
               </p>
             </div>
 
-            {/* TOOL 2 PERSON SELECTOR BAR (Vitals) */}
+            {/* TOOL 2 PERSON SELECTOR BAR (Vitals Signs and HTS Screening) */}
             <PersonSelectorBar
               toolId="vitals"
-              toolTitle="2. Medical Screening & Vitals"
+              toolTitle="2. Vitals Signs and HTS Screening"
               selectedPersonId={selectedPersonId}
               onSelectPerson={handleSelectPerson}
               onSaveToolInfo={() => handleSaveToolInfo('vitals')}
@@ -1618,7 +1778,7 @@ export const ScreeningForm: React.FC<ScreeningFormProps> = ({
                 <span className="text-xs font-black uppercase tracking-wider text-blue-950 flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-blue-800" /> 4. HTS / HIV Screening
                 </span>
-                <span className="text-xs font-bold text-blue-900">Confidential Rapid Finger-Prick Testing</span>
+                <span className="text-xs font-bold text-blue-900">Confidential Rapid Finger-Prick Testing & Treatment Linkage</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -1658,6 +1818,7 @@ export const ScreeningForm: React.FC<ScreeningFormProps> = ({
                       setHtsResult(res);
                       if (res === 'Reactive (Positive)') {
                         setOnArt('No (Never started)');
+                        setHtsReferral('Yes');
                       } else if (res === 'Non-Reactive (Negative)') {
                         setOnArt('Not Applicable (HIV Negative)');
                       }
@@ -1687,6 +1848,58 @@ export const ScreeningForm: React.FC<ScreeningFormProps> = ({
                 </div>
               </div>
 
+              {/* Conditional Prior Status / ART Facility / Adherence */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+                {hivStatusKnown === 'Yes' && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 mb-1">Prior Reported Status</label>
+                    <select
+                      value={priorStatus || 'Unknown'}
+                      onChange={(e) => setPriorStatus(e.target.value as any)}
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 font-semibold"
+                    >
+                      <option value="Positive">Known Positive</option>
+                      <option value="Negative">Known Negative (Tested &lt;3 months)</option>
+                      <option value="Unknown">Unknown / Unconfirmed</option>
+                    </select>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1">ART Facility / Collection Point</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Dunwell Youth Priority Clinic, Esselen Clinic..."
+                    value={htsMedicationLocation}
+                    onChange={(e) => setHtsMedicationLocation(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1">HTS Referral Required</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={htsReferral}
+                      onChange={(e) => setHtsReferral(e.target.value as any)}
+                      className="w-24 bg-white border border-slate-300 rounded-xl px-2.5 py-2 text-xs text-slate-900 font-bold"
+                    >
+                      <option value="No">No</option>
+                      <option value="Yes">Yes</option>
+                    </select>
+                    {htsReferral === 'Yes' && (
+                      <input
+                        type="text"
+                        placeholder="Referral facility..."
+                        value={htsReferralFacility}
+                        onChange={(e) => setHtsReferralFacility(e.target.value)}
+                        className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-900"
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {/* PrEP & Condoms */}
               <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-blue-200 text-xs">
                 <label className="flex items-center gap-2 cursor-pointer text-slate-800 font-semibold">
@@ -1710,33 +1923,41 @@ export const ScreeningForm: React.FC<ScreeningFormProps> = ({
                   />
                 </div>
               </div>
+
+              <textarea
+                rows={2}
+                placeholder="Additional HTS counselor narrative, pre/post-test counseling notes, viral load history..."
+                value={htsNotes}
+                onChange={(e) => setHtsNotes(e.target.value)}
+                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-900"
+              />
             </div>
           </div>
         )}
 
-        {/* STEP 3: SUBSTANCE USE SCREENING */}
+        {/* STEP 3: SUBSTANCE & REHAB SCREENING */}
         {currentStep === 3 && (
           <div className="space-y-6 animate-in fade-in duration-200">
             <div className="border-l-4 border-amber-500 pl-3">
               <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                <span className="text-amber-600 font-mono">3.</span> HTS & Substance Screening
+                <span className="text-amber-600 font-mono">3.</span> Substance & Rehab
               </h3>
               <p className="text-xs text-slate-600">
                 Screen alcohol and illicit substance use patterns, identify Nyaope / Tik use, and evaluate interest in rehabilitation and harm reduction support.
               </p>
             </div>
 
-            {/* TOOL 3 PERSON SELECTOR BAR (HTS & Substance) */}
+            {/* TOOL 3 PERSON SELECTOR BAR (Substance & Rehab) */}
             <PersonSelectorBar
-              toolId="hts"
-              toolTitle="3. HTS & Substance Screening"
+              toolId="substance"
+              toolTitle="3. Substance & Rehab"
               selectedPersonId={selectedPersonId}
               onSelectPerson={handleSelectPerson}
-              onSaveToolInfo={() => handleSaveToolInfo('hts')}
+              onSaveToolInfo={() => handleSaveToolInfo('substance')}
               isSaving={isSavingTool}
               activePerson={activeSelectedPerson}
-              pendingPersons={pendingByTool('hts')}
-              completedPersons={completedByTool('hts')}
+              pendingPersons={pendingByTool('substance')}
+              completedPersons={completedByTool('substance')}
               showCompleted={showCompletedInDropdown}
               onToggleShowCompleted={setShowCompletedInDropdown}
               onGoToPersonalDetails={() => setCurrentStep(1)}
@@ -1869,22 +2090,22 @@ export const ScreeningForm: React.FC<ScreeningFormProps> = ({
           </div>
         )}
 
-        {/* STEP 4: PSYCHOSOCIAL / MENTAL HEALTH SCREENING TOOL (TICK FORM) */}
+        {/* STEP 4: PSYCHOSOCIAL TICK FORM */}
         {currentStep === 4 && (
           <div className="space-y-6 animate-in fade-in duration-200">
             <div className="border-l-4 border-indigo-600 pl-3">
               <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                <span className="text-indigo-600 font-mono">4.</span> Psychosocial / Mental Health Screening Tool (Tick Form)
+                <span className="text-indigo-600 font-mono">4.</span> Psychosocial Tick Form
               </h3>
               <p className="text-xs text-slate-600">
                 Tick form screening checklist covering depressive affect, street anxiety, trauma/PTSD, and critical psychiatric safety red flags with automated clinical scoring and instant care pathways.
               </p>
             </div>
 
-            {/* TOOL 4 PERSON SELECTOR BAR (Psychosocial) */}
+            {/* TOOL 4 PERSON SELECTOR BAR (Psychosocial Tick Form) */}
             <PersonSelectorBar
               toolId="psychosocial"
-              toolTitle="4. Psychosocial / Mental Health (Tick Form)"
+              toolTitle="4. Psychosocial Tick Form"
               selectedPersonId={selectedPersonId}
               onSelectPerson={handleSelectPerson}
               onSaveToolInfo={() => handleSaveToolInfo('psychosocial')}
@@ -1905,22 +2126,22 @@ export const ScreeningForm: React.FC<ScreeningFormProps> = ({
           </div>
         )}
 
-        {/* STEP 5: CLINICAL ACTION PLAN */}
+        {/* STEP 5: SHELTER, SOCIAL SUPPORT & REINTEGRATION PLAN */}
         {currentStep === 5 && (
           <div className="space-y-6 animate-in fade-in duration-200">
             <div className="border-l-4 border-amber-500 pl-3">
               <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                <span className="text-amber-600 font-mono">5.</span> Clinical Action Plan & Referrals
+                <span className="text-amber-600 font-mono">5.</span> Shelter, Social Support & Reintegration Plan
               </h3>
               <p className="text-xs text-slate-600">
-                Determine triage severity, select referral destination, dispense essential street health medications, and establish next follow-up.
+                City of Johannesburg homeless shelter linkage, street children assessment, psychosocial counselling triage, prior shelter history surveillance, and skills development interest.
               </p>
             </div>
 
-            {/* TOOL 5 PERSON SELECTOR BAR (Action Plan) */}
+            {/* TOOL 5 PERSON SELECTOR BAR */}
             <PersonSelectorBar
               toolId="actionPlan"
-              toolTitle="5. Clinical Action Plan & Referrals"
+              toolTitle="5. Shelter, Social Support & Reintegration Plan"
               selectedPersonId={selectedPersonId}
               onSelectPerson={handleSelectPerson}
               onSaveToolInfo={() => handleSaveToolInfo('actionPlan')}
@@ -1933,123 +2154,638 @@ export const ScreeningForm: React.FC<ScreeningFormProps> = ({
               onGoToPersonalDetails={() => setCurrentStep(1)}
             />
 
-            {/* Triage Level Selector */}
-
+            {/* QUESTION 1: COJ HOMELESS SHELTER PLACEMENT */}
             <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-300 space-y-3 shadow-sm">
-              <label className="block text-xs font-black uppercase tracking-wider text-blue-950">
-                Triage Priority Level
-              </label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="flex items-center gap-2 text-blue-950">
+                <div className="p-1.5 rounded-lg bg-blue-100 text-blue-900">
+                  <Home className="w-4 h-4" />
+                </div>
+                <div>
+                  <label className="block text-xs font-black uppercase tracking-wider">
+                    1. Do they want to stay at a COJ Homeless Shelter?
+                  </label>
+                  <p className="text-[11px] text-slate-500">
+                    City of Johannesburg Social Development temporary shelter placement linkage
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
                 {[
-                  { level: 'Routine', color: 'border-emerald-500 bg-emerald-50 text-emerald-950', desc: 'Standard outreach care' },
-                  { level: 'Moderate', color: 'border-blue-500 bg-blue-50 text-blue-950', desc: 'Clinic visit in 48-72 hrs' },
-                  { level: 'Urgent', color: 'border-amber-500 bg-amber-50 text-amber-950', desc: 'Same-day clinic referral' },
-                  { level: 'Emergency', color: 'border-rose-500 bg-rose-50 text-rose-950', desc: 'Immediate EMS / Hospital' },
-                ].map((item) => (
+                  { value: 'Yes', label: 'Yes — Wants Shelter', desc: 'Accepts intake to COJ shelter', color: 'border-emerald-500 bg-emerald-50 text-emerald-950' },
+                  { value: 'Undecided', label: 'Undecided / Thinking', desc: 'Needs social worker counseling', color: 'border-amber-500 bg-amber-50 text-amber-950' },
+                  { value: 'No', label: 'No — Prefers Streets', desc: 'Declines shelter intake', color: 'border-slate-400 bg-white text-slate-800' },
+                  { value: 'Other', label: 'Other / Custom', desc: 'Alternative or specific housing need', color: 'border-indigo-500 bg-indigo-50 text-indigo-950' },
+                ].map((opt) => (
                   <button
-                    key={item.level}
+                    key={opt.value}
                     type="button"
-                    onClick={() => setTriageLevel(item.level as TriageLevel)}
+                    onClick={() => setWantsCojShelter(opt.value as any)}
                     className={`p-3 rounded-xl text-left border-2 transition ${
-                      triageLevel === item.level
-                        ? `${item.color} font-black shadow-md ring-2 ring-blue-900`
+                      wantsCojShelter === opt.value
+                        ? `${opt.color} font-black shadow-md ring-2 ring-blue-900`
                         : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
                     }`}
                   >
-                    <span className="block text-sm font-extrabold">{item.level}</span>
-                    <span className="text-[10px] text-slate-500 block mt-0.5">{item.desc}</span>
+                    <span className="block text-xs font-extrabold">{opt.label}</span>
+                    <span className="text-[10px] text-slate-500 block mt-0.5">{opt.desc}</span>
                   </button>
                 ))}
               </div>
+
+              <div className="pt-2">
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  {wantsCojShelter === 'Other'
+                    ? 'Other Shelter / Accommodation Preference (Type or enter below):'
+                    : 'Preferred Shelter / Accommodation Notes:'}
+                </label>
+                <input
+                  type="text"
+                  value={shelterPreferenceNotes}
+                  onChange={(e) => setShelterPreferenceNotes(e.target.value)}
+                  placeholder="Type or enter for other / shelter preference notes (e.g. 3 Kotze Street, Governor's House, private room, family reunification)..."
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-900"
+                />
+              </div>
             </div>
 
-            {/* Referral Facility */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-300 space-y-2 shadow-sm">
-                <label className="block text-xs font-bold text-slate-800">Primary Referral Destination</label>
-                <select
-                  value={referralDestination}
-                  onChange={(e) => setReferralDestination(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-semibold"
-                >
-                  <option value="Dunwell Youth Priority Clinic (Walk-in)">Dunwell Youth Priority Clinic (Walk-in)</option>
-                  <option value="Esselen Street Clinic (HTS / PrEP / STI)">Esselen Street Clinic (HTS / PrEP / STI)</option>
-                  <option value="Charlotte Maxeke Academic Hospital (EMS)">Charlotte Maxeke Academic Hospital (EMS)</option>
-                  <option value="COJ Golden Harvest Substance Detox">COJ Golden Harvest Substance Detox</option>
-                  <option value="3 Kotze Street Homeless Shelter">3 Kotze Street Homeless Shelter</option>
-                  <option value="Hillbrow Community Health Centre">Hillbrow Community Health Centre</option>
-                </select>
+            {/* QUESTION 2: CHILDREN STAYING ON THE STREETS */}
+            <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-300 space-y-3 shadow-sm">
+              <div className="flex items-center gap-2 text-blue-950">
+                <div className="p-1.5 rounded-lg bg-rose-100 text-rose-900">
+                  <Baby className="w-4 h-4" />
+                </div>
+                <div>
+                  <label className="block text-xs font-black uppercase tracking-wider">
+                    2. Do they have children staying with them on the streets?
+                  </label>
+                  <p className="text-[11px] text-slate-500">
+                    High-priority child protection surveillance & emergency family welfare linkage
+                  </p>
+                </div>
               </div>
 
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-300 space-y-2 shadow-sm">
-                <label className="block text-xs font-bold text-slate-800">Next Outreach Follow-up Date</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                {[
+                  { value: 'No', label: 'No Children on Streets', desc: 'Adult client living alone / no minors', color: 'border-slate-400 bg-white text-slate-800' },
+                  { value: 'Yes', label: 'Yes — Minor Children Present', desc: 'Infant or minor children living rough on streets', color: 'border-rose-500 bg-rose-50 text-rose-950' },
+                  { value: 'Other', label: 'Other / Split Family / Dependents', desc: 'Relatives, pregnant, or children elsewhere', color: 'border-indigo-500 bg-indigo-50 text-indigo-950' },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setHasChildrenOnStreets(opt.value as any)}
+                    className={`p-3 rounded-xl text-left border-2 transition ${
+                      hasChildrenOnStreets === opt.value
+                        ? `${opt.color} font-black shadow-md ring-2 ring-rose-700`
+                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <span className="block text-xs font-extrabold">{opt.label}</span>
+                    <span className="text-[10px] text-slate-500 block mt-0.5">{opt.desc}</span>
+                  </button>
+                ))}
+              </div>
+
+              {hasChildrenOnStreets === 'Yes' && (
+                <div className="bg-rose-50/80 border border-rose-200 rounded-xl p-3.5 space-y-3">
+                  <div className="flex items-center gap-2 text-xs font-bold text-rose-800">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>Priority Alert: Minor children identified in street situation. Immediate COJ Child Welfare notification required.</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-800 mb-1">
+                        Number of Children with Client:
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={childrenCount || 1}
+                        onChange={(e) => setChildrenCount(Math.max(1, Number(e.target.value)))}
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-900 font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-800 mb-1">
+                        Ages & Details of Children:
+                      </label>
+                      <input
+                        type="text"
+                        value={childrenAges}
+                        onChange={(e) => setChildrenAges(e.target.value)}
+                        placeholder="e.g. 2 years old girl, 6 years old boy..."
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-slate-900"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {hasChildrenOnStreets === 'Other' && (
+                <div className="bg-indigo-50/80 border border-indigo-200 rounded-xl p-3.5 space-y-2">
+                  <label className="block text-[11px] font-bold text-indigo-950">
+                    Specify Other Dependent / Child Living Situation (Type or enter below):
+                  </label>
+                  <input
+                    type="text"
+                    value={childrenOtherNotes}
+                    onChange={(e) => setChildrenOtherNotes(e.target.value)}
+                    placeholder="Type or enter for other (e.g. Expecting mother / pregnant, adult disabled sibling, children placed with grandmother in Soweto)..."
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-indigo-900"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* QUESTION 3: CLINICAL & PSYCHOSOCIAL HEALTH / COUNSELING */}
+            <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-300 space-y-3 shadow-sm">
+              <div className="flex items-center gap-2 text-blue-950">
+                <div className="p-1.5 rounded-lg bg-indigo-100 text-indigo-900">
+                  <Brain className="w-4 h-4" />
+                </div>
+                <div>
+                  <label className="block text-xs font-black uppercase tracking-wider">
+                    3. Do they need clinical and psychosocial health like counselling?
+                  </label>
+                  <p className="text-[11px] text-slate-500">
+                    Triage for Dunwell mental health counselors, trauma debriefing & psychological support
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+                {[
+                  { value: 'Yes', label: 'Yes — Needs Counselling', desc: 'Psychosocial & clinical session', color: 'border-indigo-600 bg-indigo-50 text-indigo-950' },
+                  { value: 'Undecided', label: 'Undecided / Open', desc: 'Re-assess during follow-up', color: 'border-amber-500 bg-amber-50 text-amber-950' },
+                  { value: 'No', label: 'No — Routine Only', desc: 'No active counseling requested', color: 'border-slate-400 bg-white text-slate-800' },
+                  { value: 'Other', label: 'Other Support', desc: 'Specific therapeutic need', color: 'border-purple-500 bg-purple-50 text-purple-950' },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setNeedsClinicalCounseling(opt.value as any)}
+                    className={`p-3 rounded-xl text-left border-2 transition ${
+                      needsClinicalCounseling === opt.value
+                        ? `${opt.color} font-black shadow-md ring-2 ring-indigo-900`
+                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <span className="block text-xs font-extrabold">{opt.label}</span>
+                    <span className="text-[10px] text-slate-500 block mt-0.5">{opt.desc}</span>
+                  </button>
+                ))}
+              </div>
+
+              {needsClinicalCounseling !== 'No' && (
+                <div className="bg-indigo-50/60 border border-indigo-200 rounded-xl p-3.5 space-y-3">
+                  <label className="block text-[11px] font-black uppercase tracking-wider text-indigo-950">
+                    Counselling Focus Areas (Select all that apply or enter other):
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      'Trauma & Street Violence / GBV',
+                      'Substance Abuse & Addiction Recovery',
+                      'Depression & Severe Hopelessness',
+                      'Anxiety & Street Survival Distress',
+                      'Grief & Loss of Loved Ones',
+                      'Chronic Illness / ART Adherence',
+                      'Family Mediation & Reconnection',
+                    ].map((area) => {
+                      const isSelected = counselingFocusAreas.includes(area);
+                      return (
+                        <button
+                          key={area}
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) {
+                              setCounselingFocusAreas(counselingFocusAreas.filter((a) => a !== area));
+                            } else {
+                              setCounselingFocusAreas([...counselingFocusAreas, area]);
+                            }
+                          }}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                            isSelected
+                              ? 'bg-indigo-900 text-white shadow-sm'
+                              : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-100'
+                          }`}
+                        >
+                          <span>{isSelected ? '✓' : '+'}</span>
+                          <span>{area}</span>
+                        </button>
+                      );
+                    })}
+
+                    {/* Display custom added focus areas */}
+                    {counselingFocusAreas
+                      .filter(
+                        (a) =>
+                          ![
+                            'Trauma & Street Violence / GBV',
+                            'Substance Abuse & Addiction Recovery',
+                            'Depression & Severe Hopelessness',
+                            'Anxiety & Street Survival Distress',
+                            'Grief & Loss of Loved Ones',
+                            'Chronic Illness / ART Adherence',
+                            'Family Mediation & Reconnection',
+                          ].includes(a)
+                      )
+                      .map((customArea) => (
+                        <button
+                          key={customArea}
+                          type="button"
+                          onClick={() =>
+                            setCounselingFocusAreas(counselingFocusAreas.filter((a) => a !== customArea))
+                          }
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 bg-indigo-900 text-white shadow-sm"
+                        >
+                          <span>✓</span>
+                          <span>{customArea}</span>
+                          <span className="text-indigo-300 hover:text-white font-black ml-1">×</span>
+                        </button>
+                      ))}
+                  </div>
+
+                  {/* Type or enter for other focus area */}
+                  <div className="pt-1">
+                    <label className="block text-[11px] font-bold text-indigo-950 mb-1">
+                      Other Focus Area (Type or enter to add):
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={customCounselingInput}
+                        onChange={(e) => setCustomCounselingInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddCustomCounseling();
+                          }
+                        }}
+                        placeholder="Type or enter for other counselling focus area (e.g. Legal trauma, child loss, bereavement)..."
+                        className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-indigo-900"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddCustomCounseling}
+                        className="px-3 py-2 bg-indigo-900 hover:bg-indigo-950 text-white text-xs font-bold rounded-xl flex items-center gap-1 transition shrink-0"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Add Other
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Counsellor / Screener Clinical Notes:
+                    </label>
+                    <input
+                      type="text"
+                      value={counselingDetails}
+                      onChange={(e) => setCounselingDetails(e.target.value)}
+                      placeholder="Type or enter for other notes (e.g. Client expresses severe grief; referred to Dunwell social worker)..."
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-indigo-900"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* QUESTION 4: PREVIOUS STAY AT COJ SHELTER, FREQUENCY & REASON FOR LEAVING */}
+            <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-300 space-y-3 shadow-sm">
+              <div className="flex items-center gap-2 text-blue-950">
+                <div className="p-1.5 rounded-lg bg-amber-100 text-amber-900">
+                  <Building className="w-4 h-4" />
+                </div>
+                <div>
+                  <label className="block text-xs font-black uppercase tracking-wider">
+                    4. Have they stayed at a COJ Homeless Shelter before?
+                  </label>
+                  <p className="text-[11px] text-slate-500">
+                    Capture past shelter utilization, frequency of admissions, and specific reasons for leaving
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                {[
+                  { value: 'No', label: 'No — Never Stayed at Shelter', desc: 'First-time street homeless / no shelter record', color: 'border-slate-400 bg-white text-slate-800' },
+                  { value: 'Yes', label: 'Yes — Has Stayed at Shelter', desc: 'Prior resident of Kotze St, Governor’s House, etc.', color: 'border-amber-500 bg-amber-50 text-amber-950' },
+                  { value: 'Other', label: 'Other / Non-COJ Facility', desc: 'NGO shelter, church home, rehabilitation center', color: 'border-indigo-500 bg-indigo-50 text-indigo-950' },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => {
+                      setStayedAtShelterBefore(opt.value as any);
+                      if (opt.value === 'No') {
+                        setShelterFrequency('Never');
+                        setShelterReasonForLeaving('');
+                        setCustomFrequencyInput('');
+                      } else if (shelterFrequency === 'Never') {
+                        setShelterFrequency('Once');
+                      }
+                    }}
+                    className={`p-3 rounded-xl text-left border-2 transition ${
+                      stayedAtShelterBefore === opt.value
+                        ? `${opt.color} font-black shadow-md ring-2 ring-amber-700`
+                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <span className="block text-xs font-extrabold">{opt.label}</span>
+                    <span className="text-[10px] text-slate-500 block mt-0.5">{opt.desc}</span>
+                  </button>
+                ))}
+              </div>
+
+              {stayedAtShelterBefore !== 'No' && (
+                <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3.5 space-y-3">
+                  <div>
+                    <label className="block text-[11px] font-black uppercase tracking-wider text-amber-950 mb-1.5">
+                      How Frequent Were Past Stays at Homeless Shelters?
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {[
+                        { val: 'Once', label: 'Stayed Once' },
+                        { val: '2-3 Times', label: '2 - 3 Times' },
+                        { val: 'Frequently / Multiple Times', label: 'Frequent / Multiple' },
+                        { val: 'Other', label: 'Other Frequency' },
+                      ].map((freq) => (
+                        <button
+                          key={freq.val}
+                          type="button"
+                          onClick={() => setShelterFrequency(freq.val)}
+                          className={`p-2 rounded-lg text-center text-xs font-bold transition border ${
+                            shelterFrequency === freq.val
+                              ? 'bg-amber-600 text-white border-amber-700 shadow-sm'
+                              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                          }`}
+                        >
+                          {freq.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Type or enter for other frequency */}
+                    {shelterFrequency === 'Other' && (
+                      <div className="mt-2">
+                        <label className="block text-[11px] font-bold text-amber-950 mb-1">
+                          Specify Other Frequency (Type or enter below):
+                        </label>
+                        <input
+                          type="text"
+                          value={customFrequencyInput}
+                          onChange={(e) => setCustomFrequencyInput(e.target.value)}
+                          placeholder="Type or enter for other frequency (e.g. 6 months continuous in 2022, seasonal winter stays)..."
+                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-amber-700"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-black uppercase tracking-wider text-amber-950 mb-1">
+                      Reason for Leaving Homeless Shelter (Select preset or enter other):
+                    </label>
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {[
+                        'Curfew & strict shelter rules',
+                        'Overcrowding & lack of privacy',
+                        'Interpersonal conflict / safety concerns',
+                        'Found employment / temporary work',
+                        'Substance use policies / discharged',
+                        'Max stay duration expired (6 months)',
+                        'Family reunion / relocation',
+                        'Theft of personal belongings',
+                      ].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => {
+                            if (shelterReasonForLeaving.includes(preset)) {
+                              setShelterReasonForLeaving(
+                                shelterReasonForLeaving.replace(preset, '').replace(/^,\s*|,\s*$/g, '').trim()
+                              );
+                            } else {
+                              setShelterReasonForLeaving(
+                                shelterReasonForLeaving ? `${shelterReasonForLeaving}, ${preset}` : preset
+                              );
+                            }
+                          }}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${
+                            shelterReasonForLeaving.includes(preset)
+                              ? 'bg-amber-800 text-white'
+                              : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-100'
+                          }`}
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+
+                    <label className="block text-[11px] font-bold text-amber-950 mb-1">
+                      Other Reason or Specific Narrative (Type or enter below):
+                    </label>
+                    <input
+                      type="text"
+                      value={shelterReasonForLeaving}
+                      onChange={(e) => setShelterReasonForLeaving(e.target.value)}
+                      placeholder="Type or enter for other reason for leaving (e.g. Medical discharge, lost identity documents, sought closer proximity to piece work)..."
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-amber-700"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* QUESTION 5: INTEREST IN SKILLS DEVELOPMENT PROGRAMS */}
+            <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-300 space-y-3 shadow-sm">
+              <div className="flex items-center gap-2 text-blue-950">
+                <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-900">
+                  <GraduationCap className="w-4 h-4" />
+                </div>
+                <div>
+                  <label className="block text-xs font-black uppercase tracking-wider">
+                    5. Are they interested in skills development programs?
+                  </label>
+                  <p className="text-[11px] text-slate-500">
+                    Linkage to City of Joburg Opportunity Centres, TVET, SETA & accredited vocational workshops
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+                {[
+                  { value: 'Yes', label: 'Yes — Keen on Skills', desc: 'Wants vocational skills training', color: 'border-emerald-500 bg-emerald-50 text-emerald-950' },
+                  { value: 'Undecided', label: 'Undecided / Needs Info', desc: 'Would like more details', color: 'border-amber-500 bg-amber-50 text-amber-950' },
+                  { value: 'No', label: 'No — Not Interested', desc: 'Declines skills training at this time', color: 'border-slate-400 bg-white text-slate-800' },
+                  { value: 'Other', label: 'Other / Custom Skills', desc: 'Has existing trade or specific goal', color: 'border-indigo-500 bg-indigo-50 text-indigo-950' },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setInterestedInSkills(opt.value as any)}
+                    className={`p-3 rounded-xl text-left border-2 transition ${
+                      interestedInSkills === opt.value
+                        ? `${opt.color} font-black shadow-md ring-2 ring-emerald-700`
+                        : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <span className="block text-xs font-extrabold">{opt.label}</span>
+                    <span className="text-[10px] text-slate-500 block mt-0.5">{opt.desc}</span>
+                  </button>
+                ))}
+              </div>
+
+              {interestedInSkills !== 'No' && (
+                <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-3.5 space-y-3">
+                  <label className="block text-[11px] font-black uppercase tracking-wider text-emerald-950">
+                    Select Preferred Vocational Skills Fields (or enter other):
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {[
+                      'Computer & IT Literacy',
+                      'Security Officer (PSIRA)',
+                      'Carpentry & Woodwork',
+                      'Catering & Hospitality',
+                      'Plumbing & Pipefitting',
+                      'Electrical & Handyman',
+                      'Bricklaying & Construction',
+                      'Sewing & Tailoring',
+                      'Motor Mechanics',
+                      'Driver License (Code 10/14)',
+                      'Urban Farming & Gardening',
+                      'Retail & Cashier Skills',
+                    ].map((skill) => {
+                      const isSelected = skillsInterestAreas.includes(skill);
+                      return (
+                        <button
+                          key={skill}
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) {
+                              setSkillsInterestAreas(skillsInterestAreas.filter((s) => s !== skill));
+                            } else {
+                              setSkillsInterestAreas([...skillsInterestAreas, skill]);
+                            }
+                          }}
+                          className={`p-2 rounded-lg text-left text-xs font-bold transition flex items-center justify-between border ${
+                            isSelected
+                              ? 'bg-emerald-800 text-white border-emerald-900 shadow-xs'
+                              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                          }`}
+                        >
+                          <span className="truncate">{skill}</span>
+                          <span className="ml-1 text-[11px]">{isSelected ? '✓' : '+'}</span>
+                        </button>
+                      );
+                    })}
+
+                    {/* Display custom added skills */}
+                    {skillsInterestAreas
+                      .filter(
+                        (s) =>
+                          ![
+                            'Computer & IT Literacy',
+                            'Security Officer (PSIRA)',
+                            'Carpentry & Woodwork',
+                            'Catering & Hospitality',
+                            'Plumbing & Pipefitting',
+                            'Electrical & Handyman',
+                            'Bricklaying & Construction',
+                            'Sewing & Tailoring',
+                            'Motor Mechanics',
+                            'Driver License (Code 10/14)',
+                            'Urban Farming & Gardening',
+                            'Retail & Cashier Skills',
+                          ].includes(s)
+                      )
+                      .map((customSkill) => (
+                        <button
+                          key={customSkill}
+                          type="button"
+                          onClick={() =>
+                            setSkillsInterestAreas(skillsInterestAreas.filter((s) => s !== customSkill))
+                          }
+                          className="p-2 rounded-lg text-left text-xs font-bold transition flex items-center justify-between border bg-emerald-800 text-white border-emerald-900 shadow-xs"
+                        >
+                          <span className="truncate">{customSkill}</span>
+                          <span className="ml-1 text-emerald-200 hover:text-white font-black">×</span>
+                        </button>
+                      ))}
+                  </div>
+
+                  {/* Type or enter other skill */}
+                  <div className="pt-1">
+                    <label className="block text-[11px] font-bold text-emerald-950 mb-1">
+                      Other Vocational Skill / Trade (Type or enter to add):
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={customSkillInput}
+                        onChange={(e) => setCustomSkillInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddCustomSkill();
+                          }
+                        }}
+                        placeholder="Type or enter for other skill (e.g. Welding, Hairdressing, Solar installation, Painting)..."
+                        className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-emerald-800"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddCustomSkill}
+                        className="px-3 py-2 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold rounded-xl flex items-center gap-1 transition shrink-0"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Add Other
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ACTION PLAN CASE NOTES & NEXT OUTREACH FOLLOW-UP */}
+            <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-300 space-y-4 shadow-sm">
+              <div className="flex items-center gap-2 text-blue-950">
+                <div className="p-1.5 rounded-lg bg-blue-100 text-blue-900">
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div>
+                  <label className="block text-xs font-black uppercase tracking-wider">
+                    Outreach Case Notes & Scheduling
+                  </label>
+                  <p className="text-[11px] text-slate-500">
+                    Document the social integration plan, client commitments, and follow-up timeline
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1">Next Outreach Follow-up Date</label>
                 <input
                   type="date"
                   value={followUpDate}
                   onChange={(e) => setFollowUpDate(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-900 font-semibold"
+                  className="w-full sm:w-64 bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 font-semibold"
                 />
               </div>
-            </div>
 
-            {/* Medications & Kits Dispensed */}
-            <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-300 space-y-3 shadow-sm">
-              <label className="block text-xs font-black uppercase tracking-wider text-blue-950">
-                Outreach Medications & Hygiene Kits Dispensed
-              </label>
-
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="e.g. Paracetamol 500mg, Wound Dressing Pack, Multivitamins..."
-                  value={newMedInput}
-                  onChange={(e) => setNewMedInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddMed();
-                    }
-                  }}
-                  className="flex-1 bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-900"
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1">
+                  Social Support & Reintegration Narrative Notes
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Type or enter summary of outreach intervention, shelter placement status, counseling plan, skills interest..."
+                  value={actionNotes}
+                  onChange={(e) => setActionNotes(e.target.value)}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-900"
                 />
-                <button
-                  type="button"
-                  onClick={handleAddMed}
-                  className="bg-blue-900 hover:bg-blue-800 text-white px-4 py-2 rounded-xl text-xs font-bold transition"
-                >
-                  Add Item
-                </button>
               </div>
-
-              <div className="flex flex-wrap gap-2 pt-1">
-                {medicationsDispensed.map((med, index) => (
-                  <span
-                    key={index}
-                    className="inline-flex items-center gap-1.5 px-3 py-1 bg-white text-blue-950 border border-slate-300 rounded-xl text-xs font-bold shadow-sm"
-                  >
-                    {med}
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveMed(index)}
-                      className="text-slate-400 hover:text-rose-600 ml-1 font-extrabold"
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* Screener Summary Notes */}
-            <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-300 space-y-2 shadow-sm">
-              <label className="block text-xs font-black text-blue-950">Clinical Narrative & Social Case Notes</label>
-              <textarea
-                rows={3}
-                placeholder="Summary of outreach intervention, mental wellness assessment, safety considerations..."
-                value={actionNotes}
-                onChange={(e) => setActionNotes(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-blue-900"
-              />
             </div>
           </div>
         )}

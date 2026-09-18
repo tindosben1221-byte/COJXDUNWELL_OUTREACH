@@ -42,33 +42,43 @@ export const ProtocolGuideModal: React.FC<{ onClose: () => void }> = ({ onClose 
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-1.5">
             <h4 className="font-extrabold text-blue-900 uppercase text-[11px] flex items-center gap-2">
               <span className="w-4 h-4 rounded-full bg-amber-400 text-slate-950 flex items-center justify-center text-[10px] font-black">2</span>
-              Section 2: Medical Screening & HTS
+              Section 2: Vitals Signs and HTS Screening
             </h4>
             <p className="text-slate-600 leading-relaxed">
-              Evaluates <strong>Baseline Vitals</strong> (Blood pressure with staging, pulse, temperature, blood glucose, weight), <strong>Chronic Conditions</strong> (Hypertension, Diabetes, Asthma, TB, Epilepsy), and acute <strong>Present Complaints</strong> (e.g. <em>Injury</em>, <em>Difficult Breathing</em>, open lacerations, trench foot).
+              Evaluates <strong>Baseline Vitals</strong> (Blood pressure with staging, pulse & rhythm, SpO2, MAP, temperature, blood glucose, weight, height, BMI), <strong>Chronic Conditions</strong>, and acute <strong>Present Complaints</strong>.
             </p>
             <p className="text-blue-900 font-bold mt-1">
-              • HTS / HIV Screening: Status known (Y/N), Accept HIV Rapid Test (Y/N), Result (Reactive/Non-reactive), and On ART adherence verification.
+              • Confidential HTS / HIV Testing: Status known (Y/N), rapid testing result, ART treatment adherence, linkage facility, PrEP, and harm reduction condom distribution.
             </p>
           </div>
 
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-1.5">
             <h4 className="font-extrabold text-blue-900 uppercase text-[11px] flex items-center gap-2">
               <span className="w-4 h-4 rounded-full bg-amber-400 text-slate-950 flex items-center justify-center text-[10px] font-black">3</span>
-              Section 3: Substance Use Screening
+              Section 3: Substance & Rehab
             </h4>
             <p className="text-slate-600 leading-relaxed">
-              Evaluates <strong>Alcohol use & frequency</strong>, <strong>Drug use & frequency</strong>, and specific <strong>Types of Substance</strong> (Nyaope / Whoonga, Crystal Meth / Tik, Cannabis / Dagga, Glue / Inhalants, Mandrax), plus <strong>Interest in Rehab Support (Y/N)</strong> for direct transfer to SANCA or COJ social development facilities.
+              Evaluates <strong>Alcohol use & frequency</strong>, <strong>Drug use & frequency</strong>, injecting drug risks, and specific <strong>Types of Substance</strong> (Nyaope / Whoonga, Crystal Meth / Tik, Cannabis / Dagga, Glue / Inhalants, Mandrax), plus <strong>Interest in Rehab Support (Y/N)</strong> for direct transfer to Golden Harvest or partner detox facilities.
             </p>
           </div>
 
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-1.5">
             <h4 className="font-extrabold text-blue-900 uppercase text-[11px] flex items-center gap-2">
               <span className="w-4 h-4 rounded-full bg-amber-400 text-slate-950 flex items-center justify-center text-[10px] font-black">4</span>
-              Section 4: Informed Consent & Digital Signature
+              Section 4: Psychosocial Tick Form
             </h4>
             <p className="text-slate-600 leading-relaxed">
-              Captures legally valid client electronic signature via touch screen, stylus, or adopted legal name in full screen, embedded straight into the printable/downloadable medical card.
+              Standardized mental health and street trauma checklist covering depressive affect, insomnia, trauma/PTSD, and safety red flags with real-time severity scoring and automated psychosocial care pathways.
+            </p>
+          </div>
+
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-1.5">
+            <h4 className="font-extrabold text-blue-900 uppercase text-[11px] flex items-center gap-2">
+              <span className="w-4 h-4 rounded-full bg-amber-400 text-slate-950 flex items-center justify-center text-[10px] font-black">5</span>
+              Section 5: Clinical Action Plan & Referrals
+            </h4>
+            <p className="text-slate-600 leading-relaxed">
+              Triage urgency assignment (Routine, Moderate, Urgent, Emergency), primary referral destination clinic, street medicine kit dispensing, and outreach follow-up scheduling.
             </p>
           </div>
         </div>
