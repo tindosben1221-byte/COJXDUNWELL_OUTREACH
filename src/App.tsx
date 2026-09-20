@@ -9,6 +9,7 @@ import {
 } from './data/db';
 import { Header } from './components/Header';
 import { Dashboard } from './components/Dashboard';
+import { ClientDirectoryView } from './components/ClientDirectoryView';
 import { ScreeningForm } from './components/ScreeningForm';
 import { BatchReportModal } from './components/BatchReportModal';
 import { ProtocolGuideModal } from './components/ProtocolGuideModal';
@@ -24,13 +25,18 @@ import {
   Activity,
   Maximize2,
   CheckCircle,
+  Users,
+  BarChart2,
+  ListFilter,
 } from 'lucide-react';
 
 export default function App() {
   const [records, setRecords] = useState<ScreeningRecord[]>(() => getCachedRecords());
 
   const [activeSite, setActiveSite] = useState<string>('ALL');
+  const [activeMainTab, setActiveMainTab] = useState<'directory' | 'dashboard'>('directory');
   const [isScreeningModalOpen, setIsScreeningModalOpen] = useState(false);
+  const [editingRecordId, setEditingRecordId] = useState<string | undefined>(undefined);
   const [isBatchReportOpen, setIsBatchReportOpen] = useState(false);
   const [isProtocolOpen, setIsProtocolOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -49,6 +55,11 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
+  const handleOpenNewScreening = (recordToEdit?: ScreeningRecord) => {
+    setEditingRecordId(recordToEdit?.id);
+    setIsScreeningModalOpen(true);
+  };
+
   const handleSaveNewRecord = (newRecord: ScreeningRecord) => {
     setRecords((prev) => {
       const idx = prev.findIndex((r) => r.id === newRecord.id);
@@ -62,6 +73,7 @@ export default function App() {
 
     if (newRecord.isFullyCompleted) {
       setIsScreeningModalOpen(false);
+      setEditingRecordId(undefined);
       showToast(`✓ Screening completed & saved for ${newRecord.personal.fullName}! Available in live ledger & reports.`);
     } else {
       showToast(`✓ Record saved for ${newRecord.personal.fullName} in database.`);
@@ -76,8 +88,6 @@ export default function App() {
     }
   };
 
-
-
   // Filter records by active site if not ALL
   const visibleRecords = activeSite === 'ALL' ? records : records.filter((r) => r.outreachSite === activeSite);
 
@@ -85,7 +95,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col selection:bg-amber-400 selection:text-slate-950 font-sans">
       {/* Top Application Header */}
       <Header
-        onNewScreening={() => setIsScreeningModalOpen(true)}
+        onNewScreening={() => handleOpenNewScreening()}
         onOpenBatchReport={() => setIsBatchReportOpen(true)}
         currentSite={activeSite}
         onSelectSite={setActiveSite}
@@ -106,7 +116,7 @@ export default function App() {
                   Dunwell Youth Priority Clinic & COJ Homeless Outreach
                 </h1>
                 <span className="hidden sm:inline-block text-[10px] uppercase font-black bg-amber-400 text-slate-950 px-2.5 py-0.5 rounded-full shadow-sm">
-                  Live Intake Tool
+                  Live Database Connected
                 </span>
               </div>
               <p className="text-xs text-blue-100 mt-1 max-w-3xl leading-relaxed">
@@ -125,7 +135,7 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => setIsScreeningModalOpen(true)}
+              onClick={() => handleOpenNewScreening()}
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl shadow-md transition whitespace-nowrap"
             >
               <Plus className="w-4 h-4" />
@@ -134,32 +144,97 @@ export default function App() {
           </div>
         </div>
 
-        {/* Screening Form View (when active) or Live Dashboard */}
+        {/* Primary View Navigation Tabs */}
+        {!isScreeningModalOpen && (
+          <div className="bg-white border border-slate-200 rounded-2xl p-2 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3 no-print">
+            <div className="flex items-center gap-1.5 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => setActiveMainTab('directory')}
+                className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs font-extrabold transition flex items-center justify-center gap-2 ${
+                  activeMainTab === 'directory'
+                    ? 'bg-blue-950 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                <Users className={`w-4 h-4 ${activeMainTab === 'directory' ? 'text-amber-400' : 'text-slate-500'}`} />
+                <span>All People & Detailed Info</span>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
+                    activeMainTab === 'directory'
+                      ? 'bg-amber-400 text-slate-950'
+                      : 'bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  {visibleRecords.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveMainTab('dashboard')}
+                className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs font-extrabold transition flex items-center justify-center gap-2 ${
+                  activeMainTab === 'dashboard'
+                    ? 'bg-blue-950 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                <BarChart2 className={`w-4 h-4 ${activeMainTab === 'dashboard' ? 'text-amber-400' : 'text-slate-500'}`} />
+                <span>Analytics & Surveillance</span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+              <button
+                onClick={() => setIsBatchReportOpen(true)}
+                className="px-3.5 py-2 text-xs font-bold text-slate-700 hover:text-blue-950 hover:bg-slate-100 rounded-xl transition flex items-center gap-1.5 border border-slate-200"
+              >
+                <FileText className="w-3.5 h-3.5 text-blue-900" />
+                <span>Consolidated City Report</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Active Screen View */}
         {isScreeningModalOpen ? (
           <div className="space-y-4">
             <div className="flex items-center justify-between bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-sm">
               <button
-                onClick={() => setIsScreeningModalOpen(false)}
+                onClick={() => {
+                  setIsScreeningModalOpen(false);
+                  setEditingRecordId(undefined);
+                }}
                 className="text-xs font-bold text-blue-900 hover:text-blue-700 transition flex items-center gap-1.5"
               >
-                ← Return to Live Dashboard
+                ← Return to Client Records & Dashboard
               </button>
               <span className="text-xs text-slate-500 font-bold">
-                Active Outreach Intake & Screening Mode
+                {editingRecordId ? 'Editing Registered Client Record' : 'Active Outreach Intake & Screening Mode'}
               </span>
             </div>
             <ScreeningForm
               onSaveRecord={handleSaveNewRecord}
-              onCancel={() => setIsScreeningModalOpen(false)}
+              onCancel={() => {
+                setIsScreeningModalOpen(false);
+                setEditingRecordId(undefined);
+              }}
               activeOutreachSite={activeSite === 'ALL' ? 'Joubert Park Clinic Base' : activeSite}
+              initialRecordId={editingRecordId}
             />
           </div>
+        ) : activeMainTab === 'directory' ? (
+          <ClientDirectoryView
+            records={visibleRecords}
+            onOpenScreeningForm={handleOpenNewScreening}
+          />
         ) : (
           <Dashboard
             records={visibleRecords}
             onOpenPdf={() => setIsBatchReportOpen(true)}
-            onNewScreening={() => setIsScreeningModalOpen(true)}
+            onNewScreening={() => handleOpenNewScreening()}
             onOpenBatchReport={() => setIsBatchReportOpen(true)}
+            onEditRecord={handleOpenNewScreening}
           />
         )}
       </main>

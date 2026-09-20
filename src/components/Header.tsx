@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { CojLogo, DnwellLogo } from './Logos';
-import { Plus, Download, MapPin, Maximize2 } from 'lucide-react';
+import { Plus, Download, MapPin, Maximize2, Cloud, CloudOff, RefreshCw } from 'lucide-react';
 import { OUTREACH_SITES } from '../data/mockData';
+import { subscribeToSyncStatus, getSyncStatus } from '../data/db';
 
 interface HeaderProps {
   onNewScreening: () => void;
@@ -18,6 +19,14 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectSite,
   screeningCount,
 }) => {
+  const [syncState, setSyncState] = useState<'connected' | 'connecting' | 'offline'>(() => getSyncStatus());
+
+  useEffect(() => {
+    return subscribeToSyncStatus((status) => {
+      setSyncState(status);
+    });
+  }, []);
+
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm no-print">
       {/* Top micro-bar for jurisdiction & live status */}
@@ -35,11 +44,48 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         <div className="flex items-center gap-3 text-xs">
+          {/* Real-time Cloud Database Status Badge */}
+          <div
+            className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              syncState === 'connected'
+                ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/40'
+                : syncState === 'connecting'
+                ? 'bg-amber-950/80 text-amber-300 border border-amber-500/40'
+                : 'bg-rose-950/80 text-rose-300 border border-rose-500/40'
+            }`}
+            title={
+              syncState === 'connected'
+                ? 'Cloud Firestore Database Connected: Real-time synchronization active across all devices'
+                : syncState === 'connecting'
+                ? 'Connecting to Cloud Firestore Database...'
+                : 'Offline Cache Active: Records will sync when reconnected'
+            }
+          >
+            {syncState === 'connected' ? (
+              <>
+                <Cloud className="w-3 h-3 text-emerald-400 animate-pulse" />
+                <span>Cloud Database Synced</span>
+              </>
+            ) : syncState === 'connecting' ? (
+              <>
+                <RefreshCw className="w-3 h-3 text-amber-400 animate-spin" />
+                <span>Connecting DB...</span>
+              </>
+            ) : (
+              <>
+                <CloudOff className="w-3 h-3 text-rose-400" />
+                <span>Offline Cache Mode</span>
+              </>
+            )}
+          </div>
+
+          <span className="text-slate-500">|</span>
+
           <span className="text-slate-300">
             Total Intakes: <strong className="text-amber-400 font-mono font-bold">{screeningCount}</strong> screened
           </span>
-          <span className="text-slate-500">|</span>
-          <span className="text-emerald-300 font-bold">POPIA & National Health Act Compliant</span>
+          <span className="text-slate-500 hidden md:inline">|</span>
+          <span className="text-emerald-300 font-bold hidden md:inline">POPIA & National Health Act Compliant</span>
         </div>
       </div>
 

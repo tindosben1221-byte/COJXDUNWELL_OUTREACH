@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FirestoreBlueprint",
+  "entities": {
+    "outreach_records": {
+      "title": "OutreachRecord",
+      "description": "Integrated outreach health ledger screening record for vulnerable and displaced persons in Johannesburg",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "refNumber": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "outreachSite": { "type": "string" },
+        "screenerName": { "type": "string" },
+        "personal": { "type": "object" },
+        "medical": { "type": "object" },
+        "hts": { "type": "object" },
+        "substance": { "type": "object" },
+        "psychosocial": { "type": "object" },
+        "actionPlan": { "type": "object" },
+        "consent": { "type": "object" },
+        "completedTools": { "type": "array", "items": { "type": "string" } },
+        "isFullyCompleted": { "type": "boolean" }
+      },
+      "required": ["id", "refNumber", "createdAt", "updatedAt"]
+    }
+  }
+}

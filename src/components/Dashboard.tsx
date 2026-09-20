@@ -30,6 +30,8 @@ import {
   GraduationCap,
   Clock,
   LifeBuoy,
+  Edit3,
+  Trash2,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -44,6 +46,8 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { DemographicStatsSection } from './DemographicStatsSection';
+import { DeleteConfirmModal } from './DeleteConfirmModal';
+import { deleteRecord } from '../data/db';
 
 interface DashboardProps {
   records: ScreeningRecord[];
@@ -51,6 +55,8 @@ interface DashboardProps {
   onNewScreening: () => void;
   onOpenBatchReport?: () => void;
   onViewConsent?: (record: ScreeningRecord) => void;
+  onEditRecord?: (record: ScreeningRecord) => void;
+  onDeleteRecord?: (record: ScreeningRecord) => void;
 }
 
 const COLORS = ['#0B2545', '#F59E0B', '#10B981', '#3B82F6', '#EC4899', '#8B5CF6', '#14B8A6'];
@@ -61,8 +67,32 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onNewScreening,
   onOpenBatchReport,
   onViewConsent,
+  onEditRecord,
+  onDeleteRecord,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [recordToDelete, setRecordToDelete] = useState<ScreeningRecord | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteClick = (record: ScreeningRecord) => {
+    setRecordToDelete(record);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!recordToDelete) return;
+    try {
+      setIsDeleting(true);
+      await deleteRecord(recordToDelete.id);
+      if (onDeleteRecord) {
+        onDeleteRecord(recordToDelete);
+      }
+      setRecordToDelete(null);
+    } catch (err) {
+      console.error('Failed to delete record from Dashboard:', err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
   const [siteFilter, setSiteFilter] = useState('ALL');
   const [substanceFilter, setSubstanceFilter] = useState('ALL');
   const [youthOnly, setYouthOnly] = useState(false);
@@ -2839,6 +2869,32 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       {/* Actions */}
                       <td className="py-3.5 px-4 text-right">
                         <div className="inline-flex items-center gap-1.5">
+                          {onEditRecord && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onEditRecord(record);
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-xs font-bold transition"
+                              title="Edit Client Record"
+                            >
+                              <Edit3 className="w-3.5 h-3.5 text-amber-700" />
+                              <span>Edit</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteClick(record);
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold transition"
+                            title="Delete Client Record"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Delete</span>
+                          </button>
                           <button
                             type="button"
                             onClick={(e) => {
@@ -2861,6 +2917,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </table>
         </div>
       </div>
+
+      {/* In-App Delete Confirmation Modal */}
+      {recordToDelete && (
+        <DeleteConfirmModal
+          record={recordToDelete}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setRecordToDelete(null)}
+          isDeleting={isDeleting}
+        />
+      )}
     </div>
   );
 };

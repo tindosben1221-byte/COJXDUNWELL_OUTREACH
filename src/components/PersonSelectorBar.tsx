@@ -31,9 +31,13 @@ export const PersonSelectorBar: React.FC<PersonSelectorBarProps> = ({
   onToggleShowCompleted,
   onGoToPersonalDetails,
 }) => {
-  const personsToDisplay = showCompleted
+  const basePersons = showCompleted
     ? [...pendingPersons, ...completedPersons]
     : pendingPersons;
+
+  const personsToDisplay = activePerson && !basePersons.some((p) => p.id === activePerson.id)
+    ? [activePerson, ...basePersons]
+    : basePersons;
 
   return (
     <div className="bg-gradient-to-r from-blue-950 via-slate-900 to-blue-900 border-2 border-amber-400/80 rounded-2xl p-4 sm:p-5 shadow-lg text-white mb-6">

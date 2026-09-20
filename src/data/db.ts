@@ -1,7 +1,28 @@
-import { ScreeningRecord, ScreeningToolId, PersonalDetails, MedicalScreening, HtsScreening, SubstanceUseScreening, PsychosocialScreening, ConsentRecord, ClinicalActionPlan } from '../types';
-import { INITIAL_OUTREACH_RECORDS } from './mockData';
+import {
+  collection,
+  doc,
+  setDoc,
+  deleteDoc,
+  onSnapshot,
+  getDocs,
+  writeBatch,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { firestoreDb } from '../lib/firebase';
+import {
+  ScreeningRecord,
+  ScreeningToolId,
+  PersonalDetails,
+  MedicalScreening,
+  HtsScreening,
+  SubstanceUseScreening,
+  PsychosocialScreening,
+  ConsentRecord,
+  ClinicalActionPlan,
+} from '../types';
 import { DEFAULT_PSYCHOSOCIAL_SYMPTOMS, calculatePsychosocialAnalysis } from '../utils/psychosocial';
 
+const COLLECTION_NAME = 'outreach_records';
 const DB_NAME = 'DunwellCojOutreachDB_Live_v1';
 const DB_VERSION = 1;
 const STORE_NAME = 'outreach_records';
@@ -15,7 +36,7 @@ export const ALL_SCREENING_TOOLS: { id: ScreeningToolId; name: string; stepNumbe
   { id: 'actionPlan', name: '5. Shelter, Social Support & Reintegration Plan', stepNumber: 5 },
 ];
 
-// Helper to filter out any legacy dummy records that might have been saved in browser storage
+// Helper to filter out legacy dummy records
 function isDummyRecord(rec: ScreeningRecord): boolean {
   if (!rec || !rec.id) return true;
   if (rec.id.startsWith('rec-00')) return true;
@@ -35,14 +56,42 @@ function isDummyRecord(rec: ScreeningRecord): boolean {
   return false;
 }
 
-// In-memory cache for synchronous rendering
+// In-memory cache for ultra-fast synchronous rendering
 let memoryRecordsCache: ScreeningRecord[] = [];
 let isDbInitialized = false;
+let isFirestoreListening = false;
+let syncStatus: 'connected' | 'connecting' | 'offline' = 'connecting';
+
 type DatabaseChangeListener = (records: ScreeningRecord[]) => void;
+type SyncStatusListener = (status: 'connected' | 'connecting' | 'offline') => void;
+
 const listeners: Set<DatabaseChangeListener> = new Set();
+const syncListeners: Set<SyncStatusListener> = new Set();
 
+export function getSyncStatus(): 'connected' | 'connecting' | 'offline' {
+  return syncStatus;
+}
 
-// Open IndexedDB database
+export function subscribeToSyncStatus(listener: SyncStatusListener): () => void {
+  syncListeners.add(listener);
+  listener(syncStatus);
+  return () => {
+    syncListeners.delete(listener);
+  };
+}
+
+function updateSyncStatus(status: 'connected' | 'connecting' | 'offline') {
+  syncStatus = status;
+  syncListeners.forEach((l) => {
+    try {
+      l(status);
+    } catch (e) {
+      console.error(e);
+    }
+  });
+}
+
+// Open IndexedDB database for local offline fallback
 function openIndexedDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if (typeof indexedDB === 'undefined') {
@@ -61,8 +110,8 @@ function openIndexedDB(): Promise<IDBDatabase> {
   });
 }
 
-// Ensure all records have completedTools populated
-function normalizeRecord(rec: ScreeningRecord): ScreeningRecord {
+// Normalize record shape
+function normalizeRecord(rec: any): ScreeningRecord {
   const tools: ScreeningToolId[] = rec.completedTools && Array.isArray(rec.completedTools)
     ? [...rec.completedTools]
     : ['personal', 'vitals', 'substance', 'psychosocial', 'actionPlan'];
@@ -94,24 +143,18 @@ function normalizeRecord(rec: ScreeningRecord): ScreeningRecord {
   };
 }
 
-// Persist memory cache to both IndexedDB and localStorage
-async function persistRecords(records: ScreeningRecord[]) {
-  // Update memory
-  memoryRecordsCache = [...records];
-
-  // 1. Backup to localStorage for instant synchronous safety
+// Save memory cache to IndexedDB and localStorage (local cache layer)
+async function persistLocalCache(records: ScreeningRecord[]) {
   try {
     localStorage.setItem(LOCAL_STORAGE_BACKUP_KEY, JSON.stringify(records));
   } catch (err) {
     console.warn('localStorage persist error:', err);
   }
 
-  // 2. Persist to IndexedDB
   try {
     const db = await openIndexedDB();
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
-    // Clear and put all
     store.clear();
     for (const record of records) {
       store.put(record);
@@ -122,9 +165,6 @@ async function persistRecords(records: ScreeningRecord[]) {
   } catch (err) {
     console.warn('IndexedDB write error:', err);
   }
-
-  // 3. Notify all reactive subscribers
-  notifyListeners();
 }
 
 function notifyListeners() {
@@ -140,7 +180,6 @@ function notifyListeners() {
 
 export function subscribeToDatabase(listener: DatabaseChangeListener): () => void {
   listeners.add(listener);
-  // Call immediately with current cache
   if (isDbInitialized) {
     listener([...memoryRecordsCache]);
   }
@@ -149,70 +188,97 @@ export function subscribeToDatabase(listener: DatabaseChangeListener): () => voi
   };
 }
 
-// Initialize database
+// Helper: Sanitize object for Firestore (convert undefined values to null or omit them)
+function sanitizeForFirestore(obj: any): any {
+  if (obj === undefined) return null;
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeForFirestore);
+  }
+  const clean: Record<string, any> = {};
+  for (const key of Object.keys(obj)) {
+    const val = obj[key];
+    if (val !== undefined) {
+      clean[key] = sanitizeForFirestore(val);
+    }
+  }
+  return clean;
+}
+
+// Start real-time Firestore database synchronization across all devices
+function startFirestoreListener() {
+  if (isFirestoreListening) return;
+  isFirestoreListening = true;
+  updateSyncStatus('connecting');
+
+  const recordsCol = collection(firestoreDb, COLLECTION_NAME);
+
+  onSnapshot(
+    recordsCol,
+    (snapshot) => {
+      updateSyncStatus('connected');
+      const remoteRecords: ScreeningRecord[] = [];
+
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (data && data.id && !isDummyRecord(data as ScreeningRecord)) {
+          remoteRecords.push(normalizeRecord(data));
+        }
+      });
+
+      // Sort newest first by createdAt or updatedAt
+      remoteRecords.sort((a, b) => {
+        const timeA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+        const timeB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+        return timeB - timeA;
+      });
+
+      memoryRecordsCache = remoteRecords;
+      isDbInitialized = true;
+      persistLocalCache(remoteRecords);
+      notifyListeners();
+    },
+    (error) => {
+      console.warn('Firestore live listener error, running in local cached mode:', error);
+      updateSyncStatus('offline');
+    }
+  );
+}
+
+// Initialize database: loads local cache instantly, then connects to Cloud Firestore
 export async function initDatabase(): Promise<ScreeningRecord[]> {
-  // Purge legacy storage keys that had mock records
+  // Purge any legacy mock storage keys
   try {
     localStorage.removeItem('dunwell_coj_outreach_db_records_v4');
     localStorage.removeItem('dunwell_coj_outreach_records_v3');
   } catch {}
 
-  if (isDbInitialized && memoryRecordsCache.length > 0) {
-    memoryRecordsCache = memoryRecordsCache.filter((r) => !isDummyRecord(r));
-    return memoryRecordsCache;
-  }
-
-  // Try loading from IndexedDB first
-  try {
-    const db = await openIndexedDB();
-    const tx = db.transaction(STORE_NAME, 'readonly');
-    const store = tx.objectStore(STORE_NAME);
-    const getAllReq = store.getAll();
-
-    const dbRecords = await new Promise<ScreeningRecord[]>((resolve, reject) => {
-      getAllReq.onsuccess = () => resolve(getAllReq.result || []);
-      getAllReq.onerror = () => reject(getAllReq.error);
-    });
-    db.close();
-
-    if (dbRecords && Array.isArray(dbRecords)) {
-      const realRecords = dbRecords.filter((r) => !isDummyRecord(r)).map(normalizeRecord);
-      memoryRecordsCache = realRecords;
-      isDbInitialized = true;
-      await persistRecords(realRecords);
-      notifyListeners();
-      return memoryRecordsCache;
-    }
-  } catch (e) {
-    console.warn('Could not read from IndexedDB, checking localStorage:', e);
-  }
-
-  // Try localStorage backup
+  // 1. First populate from localStorage / IndexedDB so UI responds with zero delay
   try {
     const saved = localStorage.getItem(LOCAL_STORAGE_BACKUP_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed)) {
-        const realRecords = parsed.filter((r) => !isDummyRecord(r)).map(normalizeRecord);
-        memoryRecordsCache = realRecords;
+        memoryRecordsCache = parsed.filter((r) => !isDummyRecord(r)).map(normalizeRecord);
         isDbInitialized = true;
-        await persistRecords(realRecords);
         notifyListeners();
-        return memoryRecordsCache;
       }
     }
   } catch (e) {
-    console.warn('Could not read localStorage backup:', e);
+    console.warn('Local storage read error:', e);
   }
 
-  // Live outreach starts with 0 dummy records
-  memoryRecordsCache = [];
-  await persistRecords([]);
-  isDbInitialized = true;
-  return [];
+  // 2. Start real-time multi-device Firestore listener
+  try {
+    startFirestoreListener();
+  } catch (e) {
+    console.error('Failed to start Firestore listener:', e);
+    updateSyncStatus('offline');
+  }
+
+  return memoryRecordsCache;
 }
 
-// Synchronous getter for memory cache
 export function getCachedRecords(): ScreeningRecord[] {
   if (!isDbInitialized) {
     try {
@@ -230,17 +296,17 @@ export function getCachedRecords(): ScreeningRecord[] {
   return memoryRecordsCache.filter((r) => !isDummyRecord(r));
 }
 
-// Get single record
 export function getRecordById(id: string): ScreeningRecord | undefined {
   return memoryRecordsCache.find((r) => r.id === id);
 }
 
 // Default blank structures for a newly enrolled person
-
-export function createBlankRecord(personal: PersonalDetails, meta: { outreachSite: string; screenerName: string }): ScreeningRecord {
+export function createBlankRecord(
+  personal: PersonalDetails,
+  meta: { outreachSite: string; screenerName: string }
+): ScreeningRecord {
   const uniqueId = 'rec-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4);
   const refNum = `COJ-DUN-2026-${Math.floor(100 + Math.random() * 900)}`;
-
   const defaultPsychAnalysis = calculatePsychosocialAnalysis(DEFAULT_PSYCHOSOCIAL_SYMPTOMS);
 
   return {
@@ -313,7 +379,7 @@ export function createBlankRecord(personal: PersonalDetails, meta: { outreachSit
       immediateIntervention: ['Routine Outreach Assessment'],
       triageLevel: 'Routine / Stable',
     },
-    completedTools: ['personal'], // Personal details completed on enrollment!
+    completedTools: ['personal'],
     isFullyCompleted: false,
   };
 }
@@ -339,21 +405,37 @@ export async function savePersonDetails(
         completedTools: Array.from(tools) as ScreeningToolId[],
         isFullyCompleted: tools.size >= 5,
       };
-      const updated = memoryRecordsCache.map((r) => (r.id === record.id ? record : r));
-      await persistRecords(updated);
-      return record;
+    } else {
+      record = createBlankRecord(personal, meta);
     }
+  } else {
+    record = createBlankRecord(personal, meta);
   }
 
-  // Brand new person enrolled
-  record = createBlankRecord(personal, meta);
-  const updated = [record, ...memoryRecordsCache];
-  await persistRecords(updated);
+  // Optimistically update local memory cache and storage
+  const exists = memoryRecordsCache.findIndex((r) => r.id === record.id);
+  if (exists >= 0) {
+    memoryRecordsCache[exists] = record;
+  } else {
+    memoryRecordsCache = [record, ...memoryRecordsCache];
+  }
+  await persistLocalCache(memoryRecordsCache);
+  notifyListeners();
+
+  // Persist directly to Firestore database for instant cross-device sync
+  try {
+    const docRef = doc(firestoreDb, COLLECTION_NAME, record.id);
+    await setDoc(docRef, sanitizeForFirestore(record), { merge: true });
+    updateSyncStatus('connected');
+  } catch (err) {
+    console.error('Error saving person to Firestore cloud database:', err);
+    updateSyncStatus('offline');
+  }
+
   return record;
 }
 
 // 2. SAVE TOOL FOR PERSON (Vitals, HTS, Psychosocial, Action Plan)
-// Marks the tool as completed for that person and updates their record in the database
 export async function saveToolForPerson(
   personId: string,
   toolId: ScreeningToolId,
@@ -389,9 +471,21 @@ export async function saveToolForPerson(
     isFullyCompleted: toolsSet.size >= 5,
   };
 
-  const newRecords = [...memoryRecordsCache];
-  newRecords[index] = updatedRecord;
-  await persistRecords(newRecords);
+  // Optimistic local update
+  memoryRecordsCache[index] = updatedRecord;
+  await persistLocalCache(memoryRecordsCache);
+  notifyListeners();
+
+  // Cloud Firestore sync across devices
+  try {
+    const docRef = doc(firestoreDb, COLLECTION_NAME, updatedRecord.id);
+    await setDoc(docRef, sanitizeForFirestore(updatedRecord), { merge: true });
+    updateSyncStatus('connected');
+  } catch (err) {
+    console.error('Error updating tool in Firestore cloud database:', err);
+    updateSyncStatus('offline');
+  }
+
   return updatedRecord;
 }
 
@@ -408,20 +502,29 @@ export async function saveFullRecord(record: ScreeningRecord): Promise<Screening
   };
 
   const existingIdx = memoryRecordsCache.findIndex((r) => r.id === normalized.id);
-  let updated: ScreeningRecord[];
   if (existingIdx >= 0) {
-    updated = [...memoryRecordsCache];
-    updated[existingIdx] = normalized;
+    memoryRecordsCache[existingIdx] = normalized;
   } else {
-    updated = [normalized, ...memoryRecordsCache];
+    memoryRecordsCache = [normalized, ...memoryRecordsCache];
   }
 
-  await persistRecords(updated);
+  await persistLocalCache(memoryRecordsCache);
+  notifyListeners();
+
+  // Cloud Firestore push
+  try {
+    const docRef = doc(firestoreDb, COLLECTION_NAME, normalized.id);
+    await setDoc(docRef, sanitizeForFirestore(normalized), { merge: true });
+    updateSyncStatus('connected');
+  } catch (err) {
+    console.error('Error saving full record to Firestore cloud database:', err);
+    updateSyncStatus('offline');
+  }
+
   return normalized;
 }
 
-// Get persons who need a specific screening tool (for the dropdown)
-// "after clicking save should remove the name of the drop down because im done with the person"
+// Get persons who need a specific screening tool
 export function getPendingPersonsForTool(toolId: ScreeningToolId): ScreeningRecord[] {
   return memoryRecordsCache.filter((r) => {
     return !r.completedTools || !r.completedTools.includes(toolId);
@@ -437,13 +540,38 @@ export function getCompletedPersonsForTool(toolId: ScreeningToolId): ScreeningRe
 
 // Delete record
 export async function deleteRecord(recordId: string): Promise<void> {
-  const updated = memoryRecordsCache.filter((r) => r.id !== recordId);
-  await persistRecords(updated);
+  memoryRecordsCache = memoryRecordsCache.filter((r) => r.id !== recordId);
+  await persistLocalCache(memoryRecordsCache);
+  notifyListeners();
+
+  try {
+    const docRef = doc(firestoreDb, COLLECTION_NAME, recordId);
+    await deleteDoc(docRef);
+    updateSyncStatus('connected');
+  } catch (err) {
+    console.error('Error deleting record from Firestore cloud database:', err);
+    updateSyncStatus('offline');
+  }
 }
 
-// Reset database - clears all stored records completely
+// Reset database - clears records from both cloud Firestore and local storage
 export async function resetDatabase(): Promise<ScreeningRecord[]> {
-  await persistRecords([]);
+  const currentIds = memoryRecordsCache.map((r) => r.id);
+  memoryRecordsCache = [];
+  await persistLocalCache([]);
+  notifyListeners();
+
+  try {
+    const batch = writeBatch(firestoreDb);
+    for (const id of currentIds) {
+      const docRef = doc(firestoreDb, COLLECTION_NAME, id);
+      batch.delete(docRef);
+    }
+    await batch.commit();
+    updateSyncStatus('connected');
+  } catch (err) {
+    console.error('Error clearing Firestore cloud records:', err);
+  }
+
   return [];
 }
-

@@ -1,0 +1,9 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Health outreach records: allow read, write, and delete for all outreach workers/devices
+    match /outreach_records/{recordId} {
+      allow read, write, delete: if true;
+    }
+  }
+}

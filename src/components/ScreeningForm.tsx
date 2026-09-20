@@ -25,12 +25,14 @@ import {
   savePersonDetails,
   saveToolForPerson,
   saveFullRecord,
+  deleteRecord,
   getCachedRecords,
   subscribeToDatabase,
 } from '../data/db';
 import { DEFAULT_PSYCHOSOCIAL_SYMPTOMS, calculatePsychosocialAnalysis } from '../utils/psychosocial';
 import { PsychosocialTickForm } from './PsychosocialTickForm';
 import { PersonSelectorBar } from './PersonSelectorBar';
+import { DeleteConfirmModal } from './DeleteConfirmModal';
 import {
   User,
   HeartPulse,
@@ -65,6 +67,8 @@ import {
   GraduationCap,
   FileText,
   Plus,
+  Trash2,
+  Edit3,
 } from 'lucide-react';
 
 
@@ -73,6 +77,7 @@ interface ScreeningFormProps {
   onCancel: () => void;
   defaultSite?: string;
   activeOutreachSite?: string;
+  initialRecordId?: string;
 }
 
 export const ScreeningForm: React.FC<ScreeningFormProps> = ({
@@ -80,15 +85,34 @@ export const ScreeningForm: React.FC<ScreeningFormProps> = ({
   onCancel,
   defaultSite = 'Joubert Park / Inner-City Outreach',
   activeOutreachSite,
+  initialRecordId,
 }) => {
   const [currentStep, setCurrentStep] = useState(1);
 
   // Database records & Station queue management
   const [allDbRecords, setAllDbRecords] = useState<ScreeningRecord[]>(() => getCachedRecords());
-  const [selectedPersonId, setSelectedPersonId] = useState<string>('');
-  const [showCompletedInDropdown, setShowCompletedInDropdown] = useState<boolean>(false);
+  const [selectedPersonId, setSelectedPersonId] = useState<string>(initialRecordId || '');
+  const [showCompletedInDropdown, setShowCompletedInDropdown] = useState<boolean>(Boolean(initialRecordId));
   const [isSavingTool, setIsSavingTool] = useState<boolean>(false);
   const [stationNotification, setStationNotification] = useState<string | null>(null);
+
+  // In-app deletion state
+  const [recordToDelete, setRecordToDelete] = useState<ScreeningRecord | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleConfirmDelete = async () => {
+    if (!recordToDelete) return;
+    try {
+      setIsDeleting(true);
+      await deleteRecord(recordToDelete.id);
+      setRecordToDelete(null);
+      onCancel(); // Exit screening form back to directory/dashboard
+    } catch (err: any) {
+      alert(`Error deleting record: ${err?.message || 'Unknown error'}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   // Subscribe to real-time database updates
   useEffect(() => {
@@ -97,6 +121,17 @@ export const ScreeningForm: React.FC<ScreeningFormProps> = ({
     });
     return unsubscribe;
   }, []);
+
+  // Pre-load person if initialRecordId provided
+  useEffect(() => {
+    if (initialRecordId && allDbRecords.length > 0) {
+      const rec = allDbRecords.find((r) => r.id === initialRecordId);
+      if (rec) {
+        setSelectedPersonId(rec.id);
+        loadPersonIntoForm(rec);
+      }
+    }
+  }, [initialRecordId, allDbRecords]);
 
   const showStationNotification = (msg: string) => {
     setStationNotification(msg);
@@ -622,17 +657,17 @@ export const ScreeningForm: React.FC<ScreeningFormProps> = ({
   const currentCompletedPersons = completedByTool(currentToolId);
   const activeSelectedPerson = allDbRecords.find((r) => r.id === selectedPersonId);
 
-  // When step changes, if selected person is not pending for this step, pick the first pending person
+  // When step changes, keep the currently selected/edited person loaded so editing is not interrupted
   useEffect(() => {
     if (currentStep > 1) {
-      const pending = pendingByTool(currentToolId);
       if (selectedPersonId) {
-        const stillPending = pending.some((p) => p.id === selectedPersonId);
-        if (!stillPending && pending.length > 0) {
-          setSelectedPersonId(pending[0].id);
-          loadPersonIntoForm(pending[0]);
+        const existing = allDbRecords.find((r) => r.id === selectedPersonId);
+        if (existing) {
+          return;
         }
-      } else if (pending.length > 0) {
+      }
+      const pending = pendingByTool(currentToolId);
+      if (pending.length > 0) {
         setSelectedPersonId(pending[0].id);
         loadPersonIntoForm(pending[0]);
       }
@@ -897,6 +932,48 @@ export const ScreeningForm: React.FC<ScreeningFormProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Active Record Banner when editing */}
+      {activeSelectedPerson && (
+        <div className="bg-amber-50 border-b-2 border-amber-300 px-5 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <span className="p-1.5 bg-amber-400 text-slate-950 font-black rounded-lg text-[11px] uppercase tracking-wider flex items-center gap-1">
+              <Edit3 className="w-3.5 h-3.5" />
+              Editing Record
+            </span>
+            <div>
+              <span className="font-extrabold text-slate-900 text-sm">
+                {activeSelectedPerson.personal.fullName}
+              </span>
+              <span className="text-slate-500 ml-2 font-mono font-bold">
+                ({activeSelectedPerson.refNumber})
+              </span>
+              <span className="text-slate-500 ml-2">
+                • {activeSelectedPerson.personal.gender}, {activeSelectedPerson.personal.age} yrs • {activeSelectedPerson.outreachSite}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setRecordToDelete(activeSelectedPerson)}
+              className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 font-bold rounded-xl transition flex items-center gap-1"
+              title="Delete this client record from the database"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Record</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleClearForNewClient}
+              className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-bold rounded-xl transition"
+              title="Switch to enrolling a brand new person"
+            >
+              + New Person Intake
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Step Tabs indicator with live queue count badges */}
       <div className="bg-slate-100 px-4 py-3 border-b border-slate-300 flex overflow-x-auto gap-2">
@@ -2810,6 +2887,18 @@ export const ScreeningForm: React.FC<ScreeningFormProps> = ({
                 Cancel
               </button>
             )}
+
+            {activeSelectedPerson && (
+              <button
+                type="button"
+                onClick={() => setRecordToDelete(activeSelectedPerson)}
+                className="ml-2 px-3.5 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-xl text-xs font-bold transition inline-flex items-center gap-1.5"
+                title="Permanently delete this client record from database"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Record</span>
+              </button>
+            )}
           </div>
 
           {/* Quick Save Info Button for Current Tool */}
@@ -2862,6 +2951,16 @@ export const ScreeningForm: React.FC<ScreeningFormProps> = ({
         </div>
 
       </form>
+
+      {/* In-App Permanent Delete Confirmation Dialog */}
+      {recordToDelete && (
+        <DeleteConfirmModal
+          record={recordToDelete}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setRecordToDelete(null)}
+          isDeleting={isDeleting}
+        />
+      )}
     </div>
   );
 };
