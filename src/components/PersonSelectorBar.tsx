@@ -35,9 +35,24 @@ export const PersonSelectorBar: React.FC<PersonSelectorBarProps> = ({
     ? [...pendingPersons, ...completedPersons]
     : pendingPersons;
 
-  const personsToDisplay = activePerson && !basePersons.some((p) => p.id === activePerson.id)
+  const rawList = activePerson && !basePersons.some((p) => p.id === activePerson.id)
     ? [activePerson, ...basePersons]
     : basePersons;
+
+  // Deduplicate by name to prevent any repeated names in the selection dropdown
+  const personsToDisplay = React.useMemo(() => {
+    const seen = new Set<string>();
+    const deduped: ScreeningRecord[] = [];
+    for (const p of rawList) {
+      const nameKey = (p.personal?.fullName || '').trim().toLowerCase();
+      if (!nameKey) continue;
+      if (!seen.has(nameKey)) {
+        seen.add(nameKey);
+        deduped.push(p);
+      }
+    }
+    return deduped;
+  }, [rawList]);
 
   return (
     <div className="bg-gradient-to-r from-blue-950 via-slate-900 to-blue-900 border-2 border-amber-400/80 rounded-2xl p-4 sm:p-5 shadow-lg text-white mb-6">

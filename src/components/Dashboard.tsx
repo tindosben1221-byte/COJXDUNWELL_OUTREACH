@@ -47,7 +47,7 @@ import {
 } from 'recharts';
 import { DemographicStatsSection } from './DemographicStatsSection';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
-import { deleteRecord } from '../data/db';
+import { deleteRecord, deduplicateRecordsByName } from '../data/db';
 
 interface DashboardProps {
   records: ScreeningRecord[];
@@ -62,7 +62,7 @@ interface DashboardProps {
 const COLORS = ['#0B2545', '#F59E0B', '#10B981', '#3B82F6', '#EC4899', '#8B5CF6', '#14B8A6'];
 
 export const Dashboard: React.FC<DashboardProps> = ({
-  records,
+  records: rawRecords,
   onOpenPdf,
   onNewScreening,
   onOpenBatchReport,
@@ -70,6 +70,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onEditRecord,
   onDeleteRecord,
 }) => {
+  // Deduplicate records to eliminate any repeated names from cohort and tables
+  const records = useMemo(() => deduplicateRecordsByName(rawRecords), [rawRecords]);
   const [searchTerm, setSearchTerm] = useState('');
   const [recordToDelete, setRecordToDelete] = useState<ScreeningRecord | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);

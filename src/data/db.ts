@@ -56,6 +56,51 @@ function isDummyRecord(rec: ScreeningRecord): boolean {
   return false;
 }
 
+/**
+ * Deduplicates an array of screening records by client full name (case-insensitive, trimmed).
+ * When duplicate names exist, retains the most complete record (most completed tools),
+ * breaking ties with the most recent update timestamp.
+ */
+export function deduplicateRecordsByName(records: ScreeningRecord[]): ScreeningRecord[] {
+  const map = new Map<string, ScreeningRecord>();
+
+  for (const rec of records) {
+    if (!rec || !rec.personal?.fullName) continue;
+    const key = rec.personal.fullName.trim().toLowerCase();
+    if (!key) continue;
+
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, rec);
+    } else {
+      const existingScore =
+        (existing.completedTools?.length || 0) * 10 +
+        (existing.isFullyCompleted ? 50 : 0) +
+        (existing.consent?.clientSignatureDataUrl ? 5 : 0);
+      const currentScore =
+        (rec.completedTools?.length || 0) * 10 +
+        (rec.isFullyCompleted ? 50 : 0) +
+        (rec.consent?.clientSignatureDataUrl ? 5 : 0);
+
+      const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+      const currentTime = new Date(rec.updatedAt || rec.createdAt || 0).getTime();
+
+      if (
+        currentScore > existingScore ||
+        (currentScore === existingScore && currentTime > existingTime)
+      ) {
+        map.set(key, rec);
+      }
+    }
+  }
+
+  return Array.from(map.values()).sort((a, b) => {
+    const timeA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+    const timeB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+    return timeB - timeA;
+  });
+}
+
 // In-memory cache for ultra-fast synchronous rendering
 let memoryRecordsCache: ScreeningRecord[] = [];
 let isDbInitialized = false;
@@ -226,16 +271,29 @@ function startFirestoreListener() {
         }
       });
 
-      // Sort newest first by createdAt or updatedAt
-      remoteRecords.sort((a, b) => {
-        const timeA = new Date(a.updatedAt || a.createdAt || 0).getTime();
-        const timeB = new Date(b.updatedAt || b.createdAt || 0).getTime();
-        return timeB - timeA;
+      // Find redundant duplicate records with identical names to purge from Firestore
+      const nameToBestId = new Map<string, string>();
+      const deduped = deduplicateRecordsByName(remoteRecords);
+      deduped.forEach((r) => {
+        const key = r.personal?.fullName?.trim().toLowerCase();
+        if (key) nameToBestId.set(key, r.id);
       });
 
-      memoryRecordsCache = remoteRecords;
+      // Asynchronously prune obsolete duplicate documents in Firestore
+      remoteRecords.forEach(async (r) => {
+        const key = r.personal?.fullName?.trim().toLowerCase();
+        if (key && nameToBestId.has(key) && nameToBestId.get(key) !== r.id) {
+          try {
+            await deleteDoc(doc(firestoreDb, COLLECTION_NAME, r.id));
+          } catch (e) {
+            console.warn('Pruning duplicate record error:', e);
+          }
+        }
+      });
+
+      memoryRecordsCache = deduped;
       isDbInitialized = true;
-      persistLocalCache(remoteRecords);
+      persistLocalCache(deduped);
       notifyListeners();
     },
     (error) => {
@@ -259,7 +317,9 @@ export async function initDatabase(): Promise<ScreeningRecord[]> {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed)) {
-        memoryRecordsCache = parsed.filter((r) => !isDummyRecord(r)).map(normalizeRecord);
+        memoryRecordsCache = deduplicateRecordsByName(
+          parsed.filter((r) => !isDummyRecord(r)).map(normalizeRecord)
+        );
         isDbInitialized = true;
         notifyListeners();
       }
@@ -286,14 +346,16 @@ export function getCachedRecords(): ScreeningRecord[] {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          memoryRecordsCache = parsed.filter((r) => !isDummyRecord(r)).map(normalizeRecord);
+          memoryRecordsCache = deduplicateRecordsByName(
+            parsed.filter((r) => !isDummyRecord(r)).map(normalizeRecord)
+          );
           return memoryRecordsCache;
         }
       }
     } catch {}
     memoryRecordsCache = [];
   }
-  return memoryRecordsCache.filter((r) => !isDummyRecord(r));
+  return deduplicateRecordsByName(memoryRecordsCache.filter((r) => !isDummyRecord(r)));
 }
 
 export function getRecordById(id: string): ScreeningRecord | undefined {
@@ -391,6 +453,17 @@ export async function savePersonDetails(
 ): Promise<ScreeningRecord> {
   let record: ScreeningRecord;
 
+  // If no explicit ID was supplied, check if someone with this exact name already exists
+  if (!meta.existingRecordId && personal.fullName) {
+    const norm = personal.fullName.trim().toLowerCase();
+    const match = memoryRecordsCache.find(
+      (r) => r.personal?.fullName?.trim().toLowerCase() === norm
+    );
+    if (match) {
+      meta.existingRecordId = match.id;
+    }
+  }
+
   if (meta.existingRecordId) {
     const existing = memoryRecordsCache.find((r) => r.id === meta.existingRecordId);
     if (existing) {
@@ -419,6 +492,7 @@ export async function savePersonDetails(
   } else {
     memoryRecordsCache = [record, ...memoryRecordsCache];
   }
+  memoryRecordsCache = deduplicateRecordsByName(memoryRecordsCache);
   await persistLocalCache(memoryRecordsCache);
   notifyListeners();
 

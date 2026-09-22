@@ -41,7 +41,7 @@ import {
 } from 'lucide-react';
 import { PdfReportModal } from './PdfReportModal';
 import { OUTREACH_SITES } from '../data/mockData';
-import { deleteRecord } from '../data/db';
+import { deleteRecord, deduplicateRecordsByName } from '../data/db';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
 
 interface ClientDirectoryViewProps {
@@ -116,9 +116,12 @@ export const ClientDirectoryView: React.FC<ClientDirectoryViewProps> = ({
   // Single PDF printing modal
   const [pdfRecord, setPdfRecord] = useState<ScreeningRecord | null>(null);
 
+  // Deduplicate records to eliminate any repeated names
+  const uniqueRecords = useMemo(() => deduplicateRecordsByName(records), [records]);
+
   // Filter & sort logic
   const filteredAndSortedRecords = useMemo(() => {
-    let result = records.filter((rec) => {
+    let result = uniqueRecords.filter((rec) => {
       const searchLower = searchTerm.toLowerCase();
       const matchSearch =
         rec.personal.fullName.toLowerCase().includes(searchLower) ||

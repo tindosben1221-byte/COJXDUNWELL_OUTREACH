@@ -1,4 +1,5 @@
 import React from 'react';
+import { DNWELL_LOGO_BASE64 } from '../assets/dnwellLogoBase64';
 
 export const CojLogo: React.FC<{ className?: string; variant?: 'dark' | 'light' | 'mono' }> = ({
   className = 'h-12',
@@ -68,52 +69,147 @@ export const CojLogo: React.FC<{ className?: string; variant?: 'dark' | 'light' 
   );
 };
 
-export const DnwellLogo: React.FC<{ className?: string; variant?: 'dark' | 'light' }> = ({
+export const DnwellLogo: React.FC<{
+  className?: string;
+  variant?: 'dark' | 'light';
+  layout?: 'stacked' | 'horizontal';
+  useImage?: boolean;
+}> = ({
   className = 'h-12',
   variant = 'dark',
+  layout = 'horizontal',
+  useImage = false,
 }) => {
   const isLight = variant === 'light';
-  const textColor = isLight ? '#FFFFFF' : '#0B192C';
+  const textColor = isLight ? '#FFFFFF' : '#1A1E22';
+  const subtitleColor = isLight ? '#A3E635' : '#5A8325';
+  const regColor = isLight ? '#94A3B8' : '#26292E';
 
+  // If exact image is requested or stacked layout on white/light background, use the exact attached brand logo asset
+  if (useImage || (layout === 'stacked' && !isLight)) {
+    return (
+      <div className={`inline-flex items-center justify-center select-none ${className}`}>
+        <img
+          src={DNWELL_LOGO_BASE64}
+          alt="Dnwell Executive Wellness and Health"
+          className="h-full w-auto max-h-full object-contain rounded-xs"
+          referrerPolicy="no-referrer"
+        />
+      </div>
+    );
+  }
+
+  // Stacked layout matches the exact square/vertical orientation of the original brand mark
+  if (layout === 'stacked') {
+    return (
+      <div className={`inline-flex flex-col items-center justify-center text-center select-none ${className}`}>
+        {/* Brand Figure & Trademark */}
+        <div className="relative w-16 h-16 sm:w-20 sm:h-20 flex items-center justify-center">
+          <svg
+            viewBox="0 0 200 200"
+            className="w-full h-full"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            {/* Top Center Head Circle */}
+            <circle cx="100" cy="45" r="22" fill="#7DAA26" />
+
+            {/* Right upper arm & Left lower leg arch ribbon */}
+            <path
+              d="M 152 40 C 148 65 130 92 100 115 C 80 130 65 155 60 178 C 65 168 76 150 92 136 C 118 114 138 90 144 68 C 148 54 150 46 152 40 Z"
+              fill="#84BA26"
+            />
+
+            {/* Left upper arm & Right lower leg arch ribbon (intersecting) */}
+            <path
+              d="M 48 40 C 52 65 70 92 100 115 C 120 130 135 155 140 178 C 135 168 124 150 108 136 C 82 114 62 90 56 68 C 52 54 50 46 48 40 Z"
+              fill="#7DAA26"
+            />
+          </svg>
+
+          {/* Registered Trademark ® Top-Right */}
+          <span
+            className="absolute top-1 right-0 text-[10px] sm:text-xs font-black"
+            style={{ color: regColor }}
+          >
+            ®
+          </span>
+        </div>
+
+        {/* Wordmark "Dnwell" */}
+        <div
+          className="text-2xl sm:text-3xl font-extrabold tracking-tight font-sans leading-none mt-1"
+          style={{ color: textColor }}
+        >
+          Dnwell
+        </div>
+
+        {/* Subtitle "Executive Wellness and Health" */}
+        <div
+          className="text-[9px] sm:text-[11px] font-bold tracking-wide mt-1 uppercase"
+          style={{ color: subtitleColor }}
+        >
+          Executive Wellness and Health
+        </div>
+      </div>
+    );
+  }
+
+  // Horizontal layout for headers, navbars and report banners
   return (
-    <div className={`inline-flex items-center gap-2.5 select-none ${className}`}>
-      {/* Dnwell Green Ribbon Human Figure */}
-      <svg
-        viewBox="0 0 100 100"
-        className="h-full w-auto max-h-12 flex-shrink-0"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        {/* Head circle */}
-        <circle cx="50" cy="22" r="12" fill="#70A82C" />
-        {/* Upper arms reaching up in joy & vitality */}
-        <path
-          d="M 32 30 C 34 45 42 55 50 62 C 58 55 66 45 68 30 C 74 36 78 48 68 62 C 58 76 54 84 50 92 C 46 84 42 76 32 62 C 22 48 26 36 32 30 Z"
-          fill="#70A82C"
-        />
-        {/* Lower flowing legs forming the ribbon */}
-        <path
-          d="M 40 68 C 30 78 28 88 28 92 C 32 90 40 82 48 72 Z"
-          fill="#84CC16"
-        />
-        <path
-          d="M 60 68 C 70 78 72 88 72 92 C 68 90 60 82 52 72 Z"
-          fill="#84CC16"
-        />
-      </svg>
+    <div className={`inline-flex items-center gap-3 select-none ${className}`}>
+      {/* Brand Icon with Registered symbol */}
+      <div className="relative h-full flex-shrink-0 flex items-center">
+        <svg
+          viewBox="0 0 200 200"
+          className="h-full w-auto max-h-14"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          {/* Head Circle */}
+          <circle cx="100" cy="45" r="22" fill="#7DAA26" />
 
+          {/* Right upper arm & Left lower leg arch */}
+          <path
+            d="M 152 40 C 148 65 130 92 100 115 C 80 130 65 155 60 178 C 65 168 76 150 92 136 C 118 114 138 90 144 68 C 148 54 150 46 152 40 Z"
+            fill="#84BA26"
+          />
+
+          {/* Left upper arm & Right lower leg arch */}
+          <path
+            d="M 48 40 C 52 65 70 92 100 115 C 120 130 135 155 140 178 C 135 168 124 150 108 136 C 82 114 62 90 56 68 C 52 54 50 46 48 40 Z"
+            fill="#7DAA26"
+          />
+        </svg>
+        <span
+          className="text-[8px] font-black absolute top-0 -right-1"
+          style={{ color: regColor }}
+        >
+          ®
+        </span>
+      </div>
+
+      {/* Typography: Wordmark + Subtitle */}
       <div className="flex flex-col justify-center leading-none">
         <div className="flex items-center gap-1">
           <span
-            className="text-2xl font-extrabold tracking-tight"
+            className="text-xl sm:text-2xl font-black tracking-tight font-sans"
             style={{ color: textColor }}
           >
             Dnwell
           </span>
-          <span className="text-[10px] font-bold text-slate-400 align-super">®</span>
+          <span
+            className="text-[9px] font-bold align-super"
+            style={{ color: regColor }}
+          >
+            ®
+          </span>
         </div>
-        <span className="text-[9px] font-semibold tracking-wide text-emerald-600 uppercase mt-0.5">
-          Youth Priority Clinic
+        <span
+          className="text-[9px] sm:text-[10px] font-bold tracking-tight uppercase mt-0.5 whitespace-nowrap"
+          style={{ color: subtitleColor }}
+        >
+          Executive Wellness and Health
         </span>
       </div>
     </div>
